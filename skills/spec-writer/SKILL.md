@@ -22,6 +22,10 @@ Run: `ssf runtime config --get artifacts.order` — generate in configured order
 - `design.md`: architecture decisions and trade-offs (not line-by-line)
 - `tasks.md`: dependency-aware implementation steps
 
+## Task Right-Sizing
+
+A task is the smallest unit that carries its own test cycle and is worth a fresh reviewer's gate. When drawing task boundaries: fold setup, configuration, scaffolding, and documentation steps into the task whose deliverable needs them; split only where a reviewer could meaningfully reject one task while approving its neighbor. Each task ends with an independently testable deliverable.
+
 ## Working Rules
 
 **Honor DP-0**: Read `dp_0_decisions`, respect confirmed constraints, don't silently expand scope. Pause on unconfirmed decisions.
@@ -37,6 +41,16 @@ Must have: relevant facts and constraints, goals and non-goals, decisions (Choic
 
 ### tasks.md
 Must include a delivery/proof map and dependency-aware tasks. Each task names the affected path or bounded area, the observable outcome, and the evidence command. Keep RED/GREEN details, review receipts, and dispatch mechanics in the execution contract/task brief; do not inflate reader-facing tasks into five ritual substeps.
+
+### No Placeholders
+
+Every task step must contain the actual content an implementer needs. These are **plan failures** — never write them:
+- "TBD", "TODO", "implement later", "fill in details"
+- "Add appropriate error handling" / "add validation" / "handle edge cases"
+- "Write tests for the above" (without actual test code)
+- "Similar to Task N" (repeat the code — the implementer may be reading tasks out of order)
+- Steps that describe what to do without showing how (code blocks required for code steps)
+- References to types, functions, or methods not defined in any task
 
 ## Artifact Generation
 
@@ -55,6 +69,20 @@ When DP-0 has made the scope clear, generate the configured planning pack (propo
 
 ### tasks.md
 - delivery/proof map, numbered tasks, affected paths or bounded areas, observable outcomes, no placeholders, every requirement mapped, explicit dependencies
+
+### Self-Review Process
+
+After writing all artifacts, look at them with fresh eyes and check the contract against the spec. This is a review you run yourself — not a subagent dispatch.
+
+**1. Spec coverage:** Skim each requirement in specs/. Can you point to a task that implements it? List any gaps.
+
+**2. Placeholder scan:** Search your artifacts for red flags — any TBD, TODO, "figure out", "add appropriate", "implement later", "fill in details", "handle edge cases", steps that describe what to do without showing how. Fix them.
+
+**3. Type consistency:** Do the types, method signatures, and property names you used in later tasks match what you defined in earlier tasks? A function called `clearLayers()` in Task 3 but `clearFullLayers()` in Task 7 is a bug.
+
+**4. Interface integrity:** Do cross-batch Consumes/Produces match? If Task 2 Produces `getUser(id: string): User`, does Task 5 Consume the exact same signature?
+
+If you find issues, fix them inline. No need to re-review — just fix and move on. If you find a spec requirement with no task, add the task.
 
 **If any artifact fails validation, fix before handing off to contract-builder.**
 

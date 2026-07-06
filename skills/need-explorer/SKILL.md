@@ -33,6 +33,14 @@ For each approach: what it is, upside, downside, best-for. Then **recommend one*
 
 Restate what you heard: "Here's what I'm hearing: [problem, scope, non-goals, success criteria]. Does this match?" Incorporate corrections and re-validate.
 
+### 5.5. Scope Decomposition
+
+Before concluding, assess scope: if the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), flag this immediately. Don't spend questions refining details of a project that needs to be decomposed first.
+
+If the change is too large for a single spec, help the user decompose into sub-changes: what are the independent pieces, how do they relate, what order should they be built? Then explore the first sub-change through the normal flow. Each sub-change gets its own spec → contract → execution cycle.
+
+For appropriately-scoped changes, proceed to DP-1.
+
 ### 6. DP-1: Requirement Confirmation Gate
 
 After user confirms the summary:
@@ -48,15 +56,38 @@ Once DP-1 is recorded, hand off to `spec-writer`.
 
 ## Anti-Patterns
 
+- **"This is too simple to need exploration"**: Every change goes through this process. A config change, a single-function fix, a label rename — all of them. "Simple" changes are where unexamined assumptions cause the most wasted work. The exploration can be short (a few sentences for truly simple changes), but you MUST go through it and get DP-1 recorded.
 - **Skipping exploration**: "Simple" changes have scope too. Five minutes of exploration prevents two hours of rework.
 - **Proposing solutions before clarifying**: If the user says "add caching," first ask what problem caching solves.
 - **Exploring indefinitely**: Stop when change name, problem statement, scope, non-goals, success criteria, and decomposition decision are all clear.
+
+## Design for Isolation and Clarity
+
+Break the system into smaller units that each have one clear purpose, communicate through well-defined interfaces, and can be understood and tested independently.
+
+For each unit, you should be able to answer: what does it do, how do you use it, and what does it depend on?
+
+Can someone understand what a unit does without reading its internals? Can you change the internals without breaking consumers? If not, the boundaries need work.
+
+Smaller, well-bounded units are also easier for implementation — an implementer reasons better about code it can hold in context at once, and edits are more reliable when files are focused. When a file grows large, that's often a signal that it's doing too much.
+
+## Working in Existing Codebases
+
+Explore the current structure before proposing changes. Follow existing patterns.
+
+Where existing code has problems that affect the work (e.g., a file that's grown too large, unclear boundaries, tangled responsibilities), include targeted improvements as part of the scope — the way a good developer improves code they're working in.
+
+Don't propose unrelated refactoring. Stay focused on what serves the current goal.
 
 ## Exploration Standard
 
 You must leave exploration with: a usable change name, a crisp problem statement, scope boundaries, non-goals, success criteria, and a decomposition decision (one change or split).
 
 ## Strong Rule
+
+<HARD-GATE>
+Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until DP-1 is recorded and the design has been approved. This applies to EVERY change regardless of perceived simplicity.
+</HARD-GATE>
 
 Do not produce implementation code. This skill stabilizes intent, not builds.
 
@@ -65,6 +96,7 @@ Do not produce implementation code. This skill stabilizes intent, not builds.
 1. **Placeholder scan**: No "probably", "maybe", "TBD", or "we'll figure it out later"
 2. **Contradiction check**: No scope items conflicting with non-goals or constraints
 3. **Scope check**: Can a developer draw a bright line between in and out?
+4. **Ambiguity check**: Could any requirement be interpreted two different ways? If so, pick one and make it explicit.
 
 ## Exception Handling
 

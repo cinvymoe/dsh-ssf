@@ -41,7 +41,7 @@ TypeScript interfaces + regex-based parsers. Compiles to `dist/` (ES2022 + NodeN
 
 ### Skills (`skills/`)
 
-9 skills, one per directory. Each contains a `SKILL.md` that Codex loads as an instruction set:
+9 core skills + 2 supplementary skills, one per directory. Each contains a `SKILL.md` that Codex loads as an instruction set:
 
 | Skill | Phase | Purpose |
 |-------|-------|---------|
