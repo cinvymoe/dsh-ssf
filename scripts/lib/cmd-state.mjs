@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readState, writeState, updateField, rebuildState } from './state-loader.mjs';
 import { computeArtifactsHash, computeContractHash } from './hash.mjs';
+import { run as runInject } from './cmd-inject.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -177,6 +178,16 @@ export async function run(args) {
       state.last_transition_to = toState;
       state.last_transition = new Date().toISOString();
       writeState(changeDir, state);
+
+      // Auto-inject phase-guard after successful transition (H-3: keep phase-guard in sync)
+      // Use --quiet to suppress all output and avoid polluting the transition response
+      try {
+        await runInject([changeDir, '--quiet']);
+      } catch (injectErr) {
+        // Non-fatal: silently ignore errors in auto-inject
+        // The phase-guard can be manually refreshed with `ssf inject` if needed
+      }
+
       if (values.json) {
         console.log(JSON.stringify({ ok: true, from: fromState, to: toState }));
       } else {

@@ -306,6 +306,7 @@ export async function run(args) {
     options: {
       json: { type: 'boolean', default: false },
       platforms: { type: 'string' },
+      quiet: { type: 'boolean', default: false },
     },
     allowPositionals: true,
   });
@@ -326,8 +327,8 @@ export async function run(args) {
 
   // Read state (graceful fallback if missing)
   const stateFile = join(changeDir, '.spec-superflow.yaml');
-  if (!existsSync(stateFile)) {
-    if (!values.json) console.log(`⚠️ No .spec-superflow.yaml found in ${changeDir}, using defaults`);
+  if (!existsSync(stateFile) && !values.quiet) {
+    console.log(`⚠️ No .spec-superflow.yaml found in ${changeDir}, using defaults`);
   }
   const state = readState(changeDir);
 
@@ -341,6 +342,11 @@ export async function run(args) {
   for (const platform of requested) {
     PLATFORM_WRITERS[platform](base, projectRoot);
     outputs.push(platform);
+  }
+
+  // Suppress all output in quiet mode (used by auto-inject after state transition)
+  if (values.quiet) {
+    return;
   }
 
   if (values.json) {
