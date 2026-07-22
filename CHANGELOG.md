@@ -46,6 +46,11 @@ The format loosely follows Keep a Changelog.
 
 ### Added
 
+- **Compaction recovery for OpenCode**: After context compaction, the spec-superflow plugin now automatically re-injects both bootstrap context and dynamic recovery state so the agent can resume work without manual intervention. Three mechanisms work together:
+  - `experimental.session.compacting` hook injects a preservation context string before compaction, telling the LLM to keep spec-superflow state in the summary.
+  - Enhanced `experimental.chat.messages.transform` hook detects when bootstrap was compacted away and re-injects it, plus injects a `<SPEC_SUPERFLOW_RECOVERY>` block with current change state, workflow, checkpoint, execution progress, and next-action routing.
+  - `ssf resume --compact` flag produces a concise recovery block suitable for injection (plain text or `compact_text` field in JSON output).
+
 - **Closes #47 — Recovery workflow commands**: add `ssf resume`, `ssf switch`, and `ssf save` as a control-plane overlay. Resume/switch are read-only; save writes only the compatible checkpoint and never automatically commits, pushes, or syncs. WorkBuddy distributes the canonical `/ssf:resume`, `/ssf:switch`, and `/ssf:save` Markdown command adapters.
 - **Closes #70 — Workflow path recommendation and selection**: `ssf workflow recommend/select/show` collects minimal intake facts, recommends full, hotfix, or tweak with reasons, and requires an explicit, auditable choice before workflow state routing continues.
 

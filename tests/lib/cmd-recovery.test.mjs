@@ -142,7 +142,7 @@ describe('ssf resume and switch', () => {
 
     it(`maps native ${command} parse errors to one JSON usage error`, () => {
       const usage = command === 'resume'
-        ? 'Usage: ssf resume [change-dir] [--json]'
+        ? 'Usage: ssf resume [change-dir] [--json] [--compact]'
         : 'Usage: ssf switch <change-dir> [--json]';
       const result = runSsf([command, '--json', '--bad-option']);
 
@@ -161,7 +161,7 @@ describe('ssf resume and switch', () => {
 
     it(`maps native ${command} parse errors to text usage`, () => {
       const usage = command === 'resume'
-        ? 'Usage: ssf resume [change-dir] [--json]'
+        ? 'Usage: ssf resume [change-dir] [--json] [--compact]'
         : 'Usage: ssf switch <change-dir> [--json]';
       const result = runSsf([command, '--bad-option']);
 

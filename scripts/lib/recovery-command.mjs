@@ -2,19 +2,22 @@ import { parseArgs } from 'node:util';
 import { RecoveryError, createRecoverySummary, resolveChangeTarget } from './change-recovery.mjs';
 
 const USAGE = {
-  resume: 'Usage: ssf resume [change-dir] [--json]',
+  resume: 'Usage: ssf resume [change-dir] [--json] [--compact]',
   switch: 'Usage: ssf switch <change-dir> [--json]',
 };
 
 export async function runRecoveryCommand(command, args, { requireTarget = false } = {}) {
-  let values = { json: args.includes('--json') };
+  let values = { json: args.includes('--json'), compact: args.includes('--compact') };
 
   let parsed;
   try {
     parsed = parseArgs({
       args,
       allowPositionals: true,
-      options: { json: { type: 'boolean', default: false } },
+      options: {
+        json: { type: 'boolean', default: false },
+        compact: { type: 'boolean', default: false },
+      },
     });
   } catch {
     printRecoveryError(
@@ -27,6 +30,7 @@ export async function runRecoveryCommand(command, args, { requireTarget = false 
   }
 
   values = parsed.values;
+  const { json, compact } = values;
   try {
 
     if (parsed.positionals.length > 1) {
@@ -49,7 +53,7 @@ export async function runRecoveryCommand(command, args, { requireTarget = false 
 
     const selection = resolveChangeTarget(parsed.positionals[0], process.cwd());
     const summary = createRecoverySummary(selection.path);
-    printRecoverySummary(values.json, {
+    const enriched = {
       ok: summary.ok,
       command,
       change: { ...summary.change, ...selection },
@@ -62,9 +66,24 @@ export async function runRecoveryCommand(command, args, { requireTarget = false 
       blockers: summary.blockers,
       next_action: summary.next_action,
       continuation: summary.continuation,
-    });
+    };
+
+    if (compact) {
+      const compactText = buildCompactRecoveryText(enriched);
+      if (json) {
+        console.log(JSON.stringify({ ...enriched, compact_text: compactText }));
+      } else {
+        console.log(compactText);
+      }
+    } else {
+      printRecoverySummary(json, enriched);
+    }
   } catch (error) {
-    printRecoveryError(command, error, values.json);
+    if (compact && error instanceof RecoveryError && error.code === 'NO_ACTIVE_CHANGE') {
+      console.log('<SPEC_SUPERFLOW_RECOVERY>\nNo active spec-superflow change detected.\n</SPEC_SUPERFLOW_RECOVERY>');
+      return;
+    }
+    printRecoveryError(command, error, json);
   }
 }
 
@@ -106,6 +125,34 @@ function printRecoverySummary(json, summary) {
     `Continuation: ${continuation}`,
     `Next action: ${nextAction}`,
   ].join('\n'));
+}
+
+function buildCompactRecoveryText(summary) {
+  const checkpoint = summary.checkpoint
+    ? `${summary.checkpoint.status}${summary.checkpoint.record.task_id ? ` (${summary.checkpoint.record.task_id})` : ''}`
+    : 'none';
+  const executionStatus = !summary.execution.required
+    ? 'not required'
+    : summary.execution.current
+      ? 'current'
+      : summary.execution.present ? 'stale' : 'missing';
+  const blockers = summary.blockers.length === 0
+    ? 'none'
+    : summary.blockers.map(b => b.message).join('; ');
+  const nextAction = summary.next_action.command
+    ?? `${summary.next_action.skill} — ${summary.next_action.reason}`;
+
+  return [
+    '<SPEC_SUPERFLOW_RECOVERY>',
+    `spec-superflow change: ${summary.change.name} (${summary.change.path})`,
+    `state: ${summary.state} | workflow: ${summary.workflow ?? 'none'}`,
+    `checkpoint: ${checkpoint}`,
+    `handoffs: active ${summary.handoffs.active.length}, result-ready ${summary.handoffs.result_ready.length}`,
+    `execution: ${executionStatus}, revision ${summary.execution.revision ?? 'none'}, next wave ${summary.execution.next_eligible_wave ?? 'none'}`,
+    `blockers: ${blockers}`,
+    `next: route to ${nextAction}`,
+    '</SPEC_SUPERFLOW_RECOVERY>',
+  ].join('\n');
 }
 
 function printRecoveryError(command, error, json, { usage = false } = {}) {
