@@ -128,10 +128,13 @@ export function recordReview(changeDir, waveId, receipt) {
     throw new Error("Review receipt status must be 'pass' or 'fail'");
   }
   for (const field of ['base', 'head']) requireText(receipt?.[field], `receipt.${field}`);
+
+  // Ensure both reviews overlays exist before validating report evidence
   const paths = getOverlayPaths(changeDir);
   const planPaths = getPlanScopedPaths(changeDir, plan);
   mkdirSync(paths.reviews, { recursive: true });
   mkdirSync(planPaths.reviews, { recursive: true });
+
   const reportEvidence = validateReviewReportEvidence(changeDir, receipt?.report);
   const { base, head } = validateReviewRange(changeDir, receipt.base, receipt.head);
   const currentReview = readCurrentReviewEvidence(changeDir, waveId, plan);
