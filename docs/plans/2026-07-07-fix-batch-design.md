@@ -71,7 +71,7 @@
 
 ## 2026-08-05 补充：`ssf isolate --isolate` 非保护分支隔离选择（ensure-branch-isolation-choice）
 
-> 关联变更：`changes/ensure-branch-isolation-choice` | 方案：B（标志 + agent 中介）| 基线：v0.12.1
+> 关联变更：`changes/ensure-branch-isolation-choice` | 方案：B（标志 + agent 中介）| 基线：v1.0.0
 
 **背景**：`ensure-branch.mjs` 对非保护分支一律 `exit 0` 放行，用户（经 agent 执行）无法表达"在这条分支上也要隔离"的意图。改动直接落在当前分支，与仓库未提交改动混杂，后续 `ssf execution review` 的 base/head 基线不干净，也拿不到"变更工件随 worktree 复制"的隔离语义。
 
