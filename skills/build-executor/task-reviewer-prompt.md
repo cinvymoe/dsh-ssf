@@ -8,7 +8,7 @@ code quality.
 more, nothing less) and is well-built (clean, tested, maintainable)
 
 ```
-Subagent (general-purpose):
+Subagent (oracle):
   description: "Review Task N (spec + quality)"
   model: [MODEL — REQUIRED: choose per build-executor Model Selection; an omitted
          model silently inherits the session's most expensive one]
