@@ -1,11 +1,16 @@
 // tests/lib/ensure-branch.test.mjs
 // Regression for #15: git branch isolation must be enforceable, not just advised.
 // `ensure-branch.mjs` must refuse to proceed on a protected branch when it cannot
-// isolate, and must allow work on a non-protected branch.
+// isolate, must allow work on a non-protected branch (with a hint), and must honor
+// `--isolate` on non-protected branches by creating a sibling worktree (or reusing
+// an existing isolation branch) instead of silently passing.
+//
+// Security: every child process is spawned with execFileSync + literal argument
+// arrays — no shell, no string interpolation.
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -17,7 +22,7 @@ const ENSURE = join(ROOT, 'scripts', 'ensure-branch.mjs');
 
 function run(args) {
   try {
-    const out = execSync(`node ${ENSURE} ${args}`, { encoding: 'utf-8', stdio: 'pipe', timeout: 10000 });
+    const out = execFileSync('node', [ENSURE, ...args], { encoding: 'utf-8', stdio: 'pipe', timeout: 10000 });
     return { ok: true, out };
   } catch (e) {
     return { ok: false, out: `${e.stdout || ''}\n${e.stderr || ''}` || e.message };
@@ -25,7 +30,11 @@ function run(args) {
 }
 
 function git(dir, ...args) {
-  execSync(`git -c user.email=t@t -c user.name=test ${args.join(' ')}`, { cwd: dir, stdio: 'pipe', timeout: 10000 });
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=test', ...args], { cwd: dir, stdio: 'pipe', timeout: 10000 });
+}
+
+function currentBranch(dir) {
+  return execFileSync('git', ['branch', '--show-current'], { cwd: dir, encoding: 'utf-8' }).trim();
 }
 
 describe('BUG/#15: ensure-branch enforces isolation', () => {
@@ -49,14 +58,15 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
   });
 
   it('SHALL refuse (non-zero) when not inside a git repository', () => {
-    const r = run(`"${plainDir}"`);
+    const r = run([plainDir]);
     assert.equal(r.ok, false, 'ensure-branch must fail outside a git repo');
   });
 
-  it('SHALL allow (zero) work on a non-protected branch', () => {
-    const r = run(`"${repoDir}"`);
+  it('SHALL allow (zero) work on a non-protected branch and hint at --isolate', () => {
+    const r = run([repoDir]);
     assert.equal(r.ok, true, `ensure-branch should pass on feature branch, got: ${r.out}`);
     assert.match(r.out, /already isolated/i);
+    assert.match(r.out, /--isolate/, `output should hint at --isolate, got: ${r.out}`);
   });
 
   it('SHALL create a sibling worktree and carry only the active change artifacts from main', () => {
@@ -65,7 +75,7 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
     writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
     git(repoDir, 'checkout', '-q', 'main');
 
-    const r = run(`"${changeDir}" planned-change`);
+    const r = run([changeDir, 'planned-change']);
     const worktree = join(dirname(repoDir), `${basename(repoDir)}-planned-change`);
 
     try {
@@ -82,9 +92,42 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
     mkdirSync(changeDir, { recursive: true });
     git(repoDir, 'checkout', '-q', 'main');
 
-    const r = run(`"${changeDir}" ../../outside`);
+    const r = run([changeDir, '../../outside']);
 
     assert.equal(r.ok, false, r.out);
     assert.match(r.out, /single safe path segment/i);
+  });
+
+  it('SHALL create a sibling worktree with --isolate on a non-protected branch, carrying only active change artifacts', () => {
+    const changeDir = join(repoDir, 'changes', 'iso-change');
+    mkdirSync(changeDir, { recursive: true });
+    writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
+    git(repoDir, 'checkout', '-q', 'feature/work');
+
+    const r = run([changeDir, 'iso-change', '--isolate']);
+    const worktree = join(dirname(repoDir), `${basename(repoDir)}-iso-change`);
+
+    try {
+      assert.equal(r.ok, true, r.out);
+      assert.equal(existsSync(join(worktree, 'changes', 'iso-change', 'proposal.md')), true);
+      assert.equal(existsSync(join(worktree, 'changes', 'iso-change', 'README.md')), false);
+    } finally {
+      if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
+    }
+  });
+
+  it('SHALL reuse an existing isolation branch with exit 0 when --isolate is given and the branch already exists', () => {
+    const changeDir = join(repoDir, 'changes', 'iso-existing');
+    mkdirSync(changeDir, { recursive: true });
+    writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
+    git(repoDir, 'checkout', '-q', 'feature/work');
+    // Simulate an isolation branch left behind by a previous run.
+    git(repoDir, 'branch', 'iso-existing');
+
+    const r = run([changeDir, 'iso-existing', '--isolate']);
+
+    assert.equal(r.ok, true, r.out);
+    assert.match(r.out, /already exists/i, `should fall back to the existing branch, got: ${r.out}`);
+    assert.equal(currentBranch(repoDir), 'iso-existing');
   });
 });

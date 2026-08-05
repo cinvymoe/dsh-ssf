@@ -4,7 +4,14 @@
 // cannot create an isolated context and no --force approval was given, so the
 // agent MUST stop and ask the user instead of silently editing main/master.
 //
-// Usage: node ensure-branch.mjs <change-dir> [change-name] [--force]
+// Protected branches (main/master) always require an isolated context.
+// Non-protected branches are already isolated and pass by default, with a hint
+// that re-running with --isolate forces a sibling worktree / dedicated branch.
+// With --isolate on a non-protected branch the same isolation path as a
+// protected branch is taken; an isolation branch left over from a previous run
+// is reused (git switch to it) instead of failing.
+//
+// Usage: node ensure-branch.mjs <change-dir> [change-name] [--isolate] [--force]
 //
 // Security: every git invocation uses execFileSync with a LITERAL command
 // ('git') and a LITERAL argument array (no shell, no variable args array) —
@@ -16,10 +23,11 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 
 const changeDir = process.argv[2];
 const changeName = process.argv[3];
+const isolate = process.argv.includes('--isolate');
 const force = process.argv.includes('--force');
 
 if (!changeDir) {
-  console.error('Usage: node ensure-branch.mjs <change-dir> [change-name] [--force]');
+  console.error('Usage: node ensure-branch.mjs <change-dir> [change-name] [--isolate] [--force]');
   process.exit(2);
 }
 
@@ -39,6 +47,16 @@ function isSafePathSegment(value) {
     && !/[\\/\u0000-\u001f]/.test(value);
 }
 
+// True when refs/heads/<name> already exists (literal arg array).
+function branchExists(name) {
+  try {
+    execFileSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${name}`], GIT_OPTS);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Determine current branch (literal arg array).
 let branch = '';
 try {
@@ -49,11 +67,15 @@ try {
 }
 
 if (!PROTECTED.includes(branch)) {
-  console.log(`ensure-branch: already isolated on branch '${branch}'. Proceed with implementation edits.`);
-  process.exit(0);
+  if (!isolate) {
+    console.log(`ensure-branch: already isolated on branch '${branch}'. Proceed with implementation edits.`);
+    console.log('To create an isolated context, re-run with --isolate.');
+    process.exit(0);
+  }
+  console.error(`ensure-branch: on non-protected branch '${branch}' with --isolate. Creating an isolated implementation context...`);
+} else {
+  console.error(`ensure-branch: on protected branch '${branch}'. Creating an isolated implementation context...`);
 }
-
-console.error(`ensure-branch: on protected branch '${branch}'. Creating an isolated implementation context...`);
 
 let repoRoot;
 try {
@@ -76,6 +98,19 @@ if (!isSafePathSegment(name)) {
   process.exit(1);
 }
 const worktreePath = join(dirname(repoRoot), `${repoName}-${name}`);
+
+// Non-protected with --isolate: an isolation branch left behind by a previous
+// run is still a valid isolated context — reuse it (literal arg array) instead
+// of failing. Protected branches keep the strict path below unchanged.
+if (!PROTECTED.includes(branch) && branchExists(name)) {
+  try {
+    execFileSync('git', ['switch', name], { ...GIT_OPTS, stdio: 'inherit' });
+    console.log(`ensure-branch: branch '${name}' already exists from a previous isolation. Switched to the existing isolation branch.`);
+    process.exit(0);
+  } catch (e) {
+    console.error(`ensure-branch: could not switch to existing branch '${name}': ${(e.stderr || e.stdout || e.message || 'unknown').toString().trim()}`);
+  }
+}
 
 function copyActiveChange(worktreeRoot) {
   if (!existsSync(sourceChangeDir)) return;
