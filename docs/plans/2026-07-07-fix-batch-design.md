@@ -66,3 +66,24 @@
 - 每个修复配独立回归测试（`node --test`）。
 - 全量运行 `npm test`，确保无回归。
 - 手动 `ssf doctor` 检查安装健康度。
+
+---
+
+## 2026-08-05 补充：`ssf isolate --isolate` 非保护分支隔离选择（ensure-branch-isolation-choice）
+
+> 关联变更：`changes/ensure-branch-isolation-choice` | 方案：B（标志 + agent 中介）| 基线：v0.12.1
+
+**背景**：`ensure-branch.mjs` 对非保护分支一律 `exit 0` 放行，用户（经 agent 执行）无法表达"在这条分支上也要隔离"的意图。改动直接落在当前分支，与仓库未提交改动混杂，后续 `ssf execution review` 的 base/head 基线不干净，也拿不到"变更工件随 worktree 复制"的隔离语义。
+
+**方案对比**：
+- 方案 A（脚本内 readline/stdin 交互询问）：无 TTY 时挂死、timeout 陷阱、测试难写、Windows 不兼容，仓库无先例，弃用。
+- 方案 B（标志 + agent 中介，采用）：新增 `--isolate` 标志承载显式隔离意图；交互询问交给 agent（`build-executor` preflight 询问用户，同意后带 `--isolate` 重跑）。
+
+**设计要点**：
+1. `scripts/ensure-branch.mjs`：解析 `--isolate`；非保护分支默认 `exit 0` 放行并追加提示 `To create an isolated context, re-run with --isolate.`；带 `--isolate` 时走与保护分支相同的隔离路径——优先 `git worktree add` 兄弟 worktree（`<repo>-<name>`），失败回退 `git switch -c`；新增 `branchExists` 检测，遗留隔离分支直接复用 `git switch` 而非失败。保护分支强制隔离与 `--force` 语义完全不变。
+2. `scripts/lib/cmd-isolate.mjs`：解析并转发 `--isolate`，usage 同步更新。
+3. `skills/build-executor/SKILL.md`：preflight 增加"非保护分支时询问用户是否隔离，同意后带 `--isolate` 重跑"步骤。
+4. `skills/workflow-start/SKILL.md`：prototype 路径改用 `--isolate` 创建隔离环境（仍不传 `--force`）。
+5. 测试：`tests/lib/ensure-branch.test.mjs` 与 `tests/lib/cmd-isolate.test.mjs` 改用 `execFileSync` 参数数组形式（规避 plugin scanner 高危项），新增 `--isolate` 相关用例。
+
+**退出码约定（不变）**：0=放行（默认非保护分支、`--force` 批准）、1=失败（STOP，含非保护分支 + `--isolate` 且创建失败且无 `--force`）、2=用法错误。`--isolate` 与 `--force` 可同时出现（保护分支 + 原地编辑批准）。

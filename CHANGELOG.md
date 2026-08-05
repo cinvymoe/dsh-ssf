@@ -6,6 +6,14 @@ The format loosely follows Keep a Changelog.
 
 ## [Unreleased]
 
+### Added
+
+- **`ssf isolate` 非保护分支隔离选择（`--isolate`）**：非保护分支（非 `main`/`master`）默认以退出码 0 放行，并追加提示 `To create an isolated context, re-run with --isolate.`；带 `--isolate` 重跑则在任意分支上显式创建隔离环境，语义与保护分支强制隔离一致（优先 `git worktree add` 兄弟 worktree，失败回退 `git switch -c`；上一次运行遗留的隔离分支直接复用 `git switch`）。保护分支强制隔离语义不变，`--force` 仍仅用于批准保护分支原地编辑。
+
+### Changed
+
+- **build-executor / workflow-start 隔离语义同步**：`build-executor` preflight 增加"非保护分支时询问用户是否隔离，同意后带 `--isolate` 重跑"步骤；`workflow-start` prototype 路径改用 `--isolate` 创建隔离环境（仍不传 `--force`）。
+
 ## [1.0.0] - 2026-08-03
 
 ### Added
