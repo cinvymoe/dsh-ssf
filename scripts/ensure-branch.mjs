@@ -22,7 +22,10 @@ import { cpSync, existsSync, mkdirSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 
 const changeDir = process.argv[2];
-const changeName = process.argv[3];
+// change-name is the first positional argument after the change directory that
+// is not a flag (e.g. `--isolate` / `--force`). Bare-flag invocations such as
+// `ssf isolate <dir> --isolate` must not treat the flag itself as the name.
+const changeName = process.argv.slice(3).find((arg) => !arg.startsWith('--'));
 const isolate = process.argv.includes('--isolate');
 const force = process.argv.includes('--force');
 
@@ -44,6 +47,7 @@ function isSafePathSegment(value) {
     && value.length > 0
     && value !== '.'
     && value !== '..'
+    && !value.startsWith('-')
     && !/[\\/\u0000-\u001f]/.test(value);
 }
 

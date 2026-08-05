@@ -130,4 +130,23 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
     assert.match(r.out, /already exists/i, `should fall back to the existing branch, got: ${r.out}`);
     assert.equal(currentBranch(repoDir), 'iso-existing');
   });
+
+  it('SHALL create a sibling worktree with --isolate and no change-name on a non-protected branch, defaulting the name to the repo name', () => {
+    const changeDir = join(repoDir, 'changes', 'no-name-change');
+    mkdirSync(changeDir, { recursive: true });
+    writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
+    git(repoDir, 'checkout', '-q', 'feature/work');
+
+    const repoName = basename(repoDir);
+    const r = run([changeDir, '--isolate']);
+    const worktree = join(dirname(repoDir), `${repoName}-${repoName}`);
+
+    try {
+      assert.equal(r.ok, true, r.out);
+      assert.equal(existsSync(join(worktree, 'changes', 'no-name-change', 'proposal.md')), true);
+      assert.equal(existsSync(join(worktree, 'changes', 'no-name-change', 'README.md')), false);
+    } finally {
+      if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
+    }
+  });
 });
