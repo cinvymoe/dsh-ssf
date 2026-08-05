@@ -65,4 +65,18 @@ describe('cmd-isolate optional change name (#52)', () => {
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(argv, [ENSURE, '/tmp/changes/demo', '--force']);
   });
+
+  it('forwards --isolate when the caller passes it', () => {
+    const { result, argv } = runIsolate(['/tmp/changes/demo', '--isolate']);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(argv, [ENSURE, '/tmp/changes/demo', '--isolate']);
+  });
+
+  it('forwards --isolate and --force together', () => {
+    const { result, argv } = runIsolate(['/tmp/changes/demo', '--isolate', '--force']);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(argv, [ENSURE, '/tmp/changes/demo', '--isolate', '--force']);
+  });
 });
