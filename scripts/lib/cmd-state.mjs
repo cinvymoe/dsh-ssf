@@ -6,7 +6,6 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readState, writeState, updateField, rebuildState } from './state-loader.mjs';
 import { computeArtifactsHash, computeContractHash } from './hash.mjs';
-import { run as runInject } from './cmd-inject.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -180,12 +179,18 @@ export async function run(args) {
       writeState(changeDir, state);
 
       // Auto-inject phase-guard after successful transition (H-3: keep phase-guard in sync)
-      // Use --quiet to suppress all output and avoid polluting the transition response
+      // Spawn as a subprocess: cmd-inject calls process.exit(2) when no platform
+      // can be detected, which would otherwise abort this transition despite the
+      // state already being persisted. The phase-guard can be manually refreshed
+      // with `ssf inject` if auto-inject fails.
       try {
-        await runInject([changeDir, '--quiet']);
-      } catch (injectErr) {
-        // Non-fatal: silently ignore errors in auto-inject
-        // The phase-guard can be manually refreshed with `ssf inject` if needed
+        spawnSync(process.execPath, [join(__dirname, '..', 'spec-superflow.mjs'), 'inject', changeDir, '--quiet'], {
+          cwd: process.cwd(),
+          stdio: 'ignore',
+          timeout: 10_000,
+        });
+      } catch {
+        // Non-fatal: phase-guard can be manually refreshed with `ssf inject`
       }
 
       if (values.json) {
