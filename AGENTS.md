@@ -8,19 +8,26 @@ A self-contained Codex plugin that integrates OpenSpec-style planning + Superpow
 
 ## Commands
 
+Package manager: **bun** is the default for local development (install, build, test, validate).
+
 ```bash
+# Install dependencies
+bun install
+
 # Build TypeScript
-npm run build
+bun run build
 
 # Run integration tests
-npm test
+bun run test
 
 # Run single test (Node 20+ native test runner)
 node --test tests/e2e.test.mjs --test-name-pattern="parseDeltaSpec"
 
 # Validate artifacts (uses docs/examples/ data)
-npm run validate
+bun run validate
 ```
+
+Note: use `bun run test`, not bare `bun test` — the latter invokes Bun's native test runner and bypasses the `node --test` script in package.json.
 
 ## Architecture
 
@@ -112,7 +119,7 @@ exploring → specifying → bridging → approved-for-build → executing → c
 ## Design Decisions
 
 - **`dist/` is committed** — the plugin is consumed via skills and scripts, not as an npm package. Tracking `dist/` lets validation scripts work immediately after cloning.
-- **Tests import from `dist/`, not `src/`** — always run `npm run build` before `npm test`.
+- **Tests import from `dist/`, not `src/`** — always run `bun run build` before `bun run test`.
 - **Content-level stale detection** — `workflow-start` compares proposal scope vs contract intent lock, not file timestamps.
 - **Self-contained** — does not require OpenSpec or Superpowers to be installed. Absorbed concepts are reimplemented here.
 - **Zero runtime dependencies** — only TypeScript as devDependency.
@@ -126,7 +133,7 @@ exploring → specifying → bridging → approved-for-build → executing → c
 
 ## Testing
 
-Tests import from `dist/index.js` (compiled output), not source. Run `npm run build` before `npm test`.
+Tests import from `dist/index.js` (compiled output), not source. Run `bun run build` before `bun run test`.
 
 Test data lives in `docs/examples/` — real proposal/spec/design artifacts from `add-dark-mode` and `refactor-auth-boundary` scenarios.
 
