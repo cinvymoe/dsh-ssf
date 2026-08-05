@@ -20,12 +20,18 @@ Branch/worktree preflight before ANY implementation edit (mandatory — do not s
    ```
    This script enforces git isolation: if you are on `main`/`master` it creates a
    git worktree (preferred) or a new branch, and exits non-zero if it cannot and you
-   have not approved `--force`.
+   have not approved `--force`. On a non-protected branch it exits zero by default
+   and prints a hint that you may re-run with `--isolate` to force an isolated
+   environment.
 2. If `ssf isolate` exits non-zero: STOP. Do not edit `main`/`master` in place.
    Ask the user for explicit approval (and re-run with `ssf isolate <change-dir> --force`
    only after they approve).
-3. If it succeeds, report the chosen branch/worktree and make all implementation
-   edits there.
+3. If it succeeds on a non-protected branch and prints the `--isolate` hint: ask
+   the user whether they want an isolated environment. If they agree, re-run with
+   `ssf isolate <change-dir> --isolate`; if they decline, continue on the current
+   branch.
+4. Once `ssf isolate` succeeds (with or without `--isolate`), report the chosen
+   branch/worktree and make all implementation edits there.
 
 ## Core Laws
 

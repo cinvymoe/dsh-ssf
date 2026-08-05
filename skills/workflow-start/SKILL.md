@@ -173,12 +173,13 @@ until the user confirms. After confirmation:
 ssf handoff create <change-dir> \
   --type prototype --objective "<confirmed objective>" \
   --expected-output "<expected evidence>" --acceptance "<completion criterion>"
-ssf isolate <change-dir> prototype-<handoff-id>
+ssf isolate <change-dir> prototype-<handoff-id> --isolate
 ```
 
 Never suggest or enter this route automatically for backend, CLI, configuration,
 or internal-refactor work. Never pass `--force` to `ssf isolate` for prototype
-work.
+work — pass `--isolate` instead, which is the dedicated confirmation flag for
+prototype isolation (orthogonal to the `--force` override for protected branches).
 
 ### Fast-Path Routing
 - **Legacy Hotfix**: Route to contract-builder (minimal), skip need-explorer + spec-writer, guard check `exploring bridging --workflow hotfix`, then `bridging -> approved-for-build`, after DP-3 → build-executor (recommend, show, and confirm an execution mode), after → release-archivist (lightweight). It may skip planning artifacts but still requires a minimal contract, DP-3, and a current execution plan. A direct Hotfix instead follows Direct Short-Path Intake.
