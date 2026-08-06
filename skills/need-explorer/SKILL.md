@@ -15,11 +15,21 @@ Agree on: problem, scope, non-goals, success criteria, whether to split before s
 
 ### 1. Inspect Context First
 
-Before asking questions, understand what exists and what constraints are in place.
+Before asking questions, understand what exists and what constraints are in place. This is the initial pass; fact-finding that emerges during questioning (§2.5) is equally your job.
 
-### 2. One Question at a Time
+### 2. Questioning Strategy: Single Question vs Frontier Rounds
 
-Ask a single clear question, wait for the answer, digest, then ask the next. Never ask 3+ questions at once. Each answer informs the next question.
+Default: ask a single clear question, wait for the answer, digest, then ask the next. Each answer informs the next question. Use this while the change is still fuzzy and every answer reshapes what to ask next.
+
+When you have identified 3+ independent open decisions whose answers do not depend on each other, switch to **frontier rounds**: map the open decisions as a tree, identify the frontier — every decision whose prerequisites are already settled — and ask the whole frontier in one round. Number each question and give your recommended answer. A question whose answer depends on another still-open question belongs to a later round, never the current one. Recompute the frontier after each round of answers.
+
+Never batch questions with hidden dependencies, and never batch while the problem itself is still undefined.
+
+### 2.5. Fact-Finding: Your Job, Never the User's
+
+Finding facts is your job, never the user's. When a question needs a fact from the environment (codebase, config, docs, tools), look it up yourself or dispatch a read-only subagent (no code changes, no implementation actions — the HARD-GATE below still applies). Do not ask the user for anything you could find out yourself. Only decisions belong to the user.
+
+A fact not yet gathered is an unsettled prerequisite: only the questions downstream of it wait. Ask the rest of the frontier now, gather the missing fact before the next round, and incorporate gathered facts into the next round's questions.
 
 ### 3. Prefer Multiple-Choice Questions
 
@@ -31,7 +41,7 @@ For each approach: what it is, upside, downside, best-for. Then **recommend one*
 
 ### 5. Validate Before Concluding
 
-Restate what you heard: "Here's what I'm hearing: [problem, scope, non-goals, success criteria]. Does this match?" Incorporate corrections and re-validate.
+Restate what you heard: "Here's what I'm hearing: [problem, scope, non-goals, success criteria, and any specific decisions made during exploration]. Does this match?" Incorporate corrections and re-validate.
 
 ### 5.5. Scope Decomposition
 
@@ -59,6 +69,8 @@ Once DP-1 is recorded, hand off to `spec-writer`.
 - **"This is too simple to need exploration"**: Every change goes through this process. A config change, a single-function fix, a label rename — all of them. "Simple" changes are where unexamined assumptions cause the most wasted work. The exploration can be short (a few sentences for truly simple changes), but you MUST go through it and get DP-1 recorded.
 - **Skipping exploration**: "Simple" changes have scope too. Five minutes of exploration prevents two hours of rework.
 - **Proposing solutions before clarifying**: If the user says "add caching," first ask what problem caching solves.
+- **Asking the user for facts**: If a question can be answered by reading the codebase, running a tool, or dispatching a read-only subagent, do it yourself instead of asking the user. Ask the user only for decisions.
+- **Batching dependent questions**: Frontier rounds batch only independent questions. A question that depends on an unsettled answer waits for a later round.
 - **Exploring indefinitely**: Stop when change name, problem statement, scope, non-goals, success criteria, and decomposition decision are all clear.
 
 ## Design for Isolation and Clarity
@@ -97,6 +109,7 @@ Do not produce implementation code. This skill stabilizes intent, not builds.
 2. **Contradiction check**: No scope items conflicting with non-goals or constraints
 3. **Scope check**: Can a developer draw a bright line between in and out?
 4. **Ambiguity check**: Could any requirement be interpreted two different ways? If so, pick one and make it explicit.
+5. **Fact check**: No open question could have been answered by inspecting the environment instead of asking the user.
 
 ## Exception Handling
 
