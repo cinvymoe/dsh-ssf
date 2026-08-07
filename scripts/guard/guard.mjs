@@ -26,7 +26,7 @@ import {
 // Transition matrix: <from>:<to> → required check dimensions
 const TRANSITION_CHECKS = {
   // Forward transitions
-  'exploring:specifying':           [],
+  'exploring:specifying':           ['dp-gate-passed'],
   'specifying:bridging':            ['artifacts-exist', 'schema-valid'],
   'bridging:approved-for-build':    ['artifacts-exist', 'schema-valid', 'contract-fresh', 'dp-gate-passed'],
   'approved-for-build:executing':   ['artifacts-exist', 'contract-fresh', 'dp-gate-passed', 'execution-plan-ready'],
@@ -59,12 +59,14 @@ const TRANSITION_CHECKS = {
 
 const WORKFLOW_TRANSITION_CHECKS = {
   hotfix: {
+    'exploring:specifying': [],
     'exploring:bridging': [],
     'bridging:approved-for-build': ['contract-current', 'dp3-approved'],
     'approved-for-build:executing': ['contract-current', 'dp3-approved', 'execution-plan-ready'],
     'executing:closing': ['tests-passing', 'specs-merged', 'execution-plan-ready', 'execution-reviews-passed'],
   },
   tweak: {
+    'exploring:specifying': [],
     'exploring:approved-for-build': [],
     'approved-for-build:executing': [],
     'executing:closing': ['direct-test-result'],
@@ -73,6 +75,7 @@ const WORKFLOW_TRANSITION_CHECKS = {
 };
 
 const DIRECT_SHORT_PATH_CHECKS = {
+  'exploring:specifying': [],
   'exploring:approved-for-build': ['direct-short-path'],
   'approved-for-build:executing': ['direct-short-path'],
   'executing:closing': ['direct-short-path', 'direct-test-result'],

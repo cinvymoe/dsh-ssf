@@ -6,6 +6,8 @@ import { readState } from '../../lib/state-loader.mjs';
  * Each entry lists the DP fields that must have a non-null value.
  */
 const REQUIRED_DPS = {
+  // DP-1: Requirements must be confirmed (or explicitly waived) before specifying
+  'exploring→specifying': ['dp_1_result'],
   // DP-4: Execution mode must be selected before entering executing
   'approved-for-build→executing': ['dp_4_result'],
   // DP-3: Contract must be approved before executing (hard gate)
