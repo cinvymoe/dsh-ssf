@@ -21,6 +21,8 @@
 - **触发条件**：need-explorer 完成需求澄清与范围界定之前，用户需要确认最终的 scope 和 capabilities
 - **所需输入**：need-explorer 整理的需求摘要、变更范围（scope）、能力清单（capabilities）、约束条件与成功标准
 - **预期输出**：用户明确确认需求范围和关键能力，或提出修改意见供 need-explorer 迭代
+- **记录值语义**：`dp_1_result` 以 `confirmed:` 开头表示 need-explorer 探索后用户确认；以 `waived:` 开头表示用户明确豁免探索（请求已足够清晰）。
+- **门禁**：Full 路径下 guard 对 `exploring → specifying` 强制要求 `dp_1_result` 已记录；快速路径（quick/tweak/hotfix/lightweight）豁免。
 - **关联 skill**：`spec-superflow:need-explorer`
 
 ## DP-2: 工件审查

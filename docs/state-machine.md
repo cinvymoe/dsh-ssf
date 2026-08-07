@@ -11,6 +11,8 @@
 - no implementation is allowed
 - `need-explorer` is active
 
+DP-1 gates `exploring → specifying` on the Full path: the transition requires a recorded `dp_1_result` — either `confirmed: ...` from need-explorer or `waived: ...` from an explicit user waiver. Fast paths (quick, tweak, hotfix, lightweight) are exempt.
+
 #### Workflow Path Intake
 
 At entry, `workflow-start` reads the persisted `workflow` selection first. An

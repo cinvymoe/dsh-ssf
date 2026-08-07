@@ -138,6 +138,17 @@ Config-aware routing: check `artifacts.order`, `artifacts.skip`, and
 ### Route to need-explorer
 Change is fuzzy, scope unclear, comparing options, no stable change name.
 
+For the Full path this is the **default route**: whenever `dp_1_result` is null, route to need-explorer even if the request already looks clear — a short exploration still applies. The guard blocks `exploring → specifying` for full workflow without a recorded `dp_1_result`.
+
+Skip only when: (a) the active path is Quick, Tweak, direct Hotfix, or legacy Hotfix (fast paths skip exploration per their routing rules); or (b) the user explicitly waives exploration after being told the request looks clear. Record an explicit waiver as the DP-1 decision before routing to spec-writer:
+
+```bash
+ssf state set <change-dir> dp_1_result "waived: <user's reason>"
+ssf state set <change-dir> dp_1_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ)
+```
+
+Never leave `dp_1_result` null on the Full path — either need-explorer records `confirmed: ...` or the waiver is recorded.
+
 ### Route to spec-writer (Full only)
 Guard: `ssf runtime guard check <dir> exploring specifying --json` → fail = BLOCK. User knows what they want, artifacts missing/incomplete.
 
