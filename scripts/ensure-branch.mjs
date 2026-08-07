@@ -6,12 +6,17 @@
 //
 // Protected branches (main/master) always require an isolated context.
 // Non-protected branches are already isolated and pass by default, with a hint
-// that re-running with --isolate forces a sibling worktree / dedicated branch.
+// that re-running with --isolate forces a sibling worktree.
 // With --isolate on a non-protected branch the same isolation path as a
-// protected branch is taken; an isolation branch left over from a previous run
-// is reused (git switch to it) instead of failing.
+// protected branch is taken: a sibling worktree at <repoRoot>/../<repoName>-<name>
+// is created with the active change artifacts copied in. A worktree left over
+// from a previous run is reused (the active change artifacts are re-copied)
+// instead of failing. Worktrees are the only isolation mode — there is no
+// branch fallback.
 //
 // Usage: node ensure-branch.mjs <change-dir> [change-name] [--isolate] [--force]
+//   --isolate  create an isolated environment on any branch via a sibling
+//              worktree (default: pass through on non-protected branches)
 //
 // Security: every git invocation uses execFileSync with a LITERAL command
 // ('git') and a LITERAL argument array (no shell, no variable args array) —
@@ -49,16 +54,6 @@ function isSafePathSegment(value) {
     && value !== '..'
     && !value.startsWith('-')
     && !/[\\/\u0000-\u001f]/.test(value);
-}
-
-// True when refs/heads/<name> already exists (literal arg array).
-function branchExists(name) {
-  try {
-    execFileSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${name}`], GIT_OPTS);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 // Determine current branch (literal arg array).
@@ -103,19 +98,6 @@ if (!isSafePathSegment(name)) {
 }
 const worktreePath = join(dirname(repoRoot), `${repoName}-${name}`);
 
-// Non-protected with --isolate: an isolation branch left behind by a previous
-// run is still a valid isolated context — reuse it (literal arg array) instead
-// of failing. Protected branches keep the strict path below unchanged.
-if (!PROTECTED.includes(branch) && branchExists(name)) {
-  try {
-    execFileSync('git', ['switch', name], { ...GIT_OPTS, stdio: 'inherit' });
-    console.log(`ensure-branch: branch '${name}' already exists from a previous isolation. Switched to the existing isolation branch.`);
-    process.exit(0);
-  } catch (e) {
-    console.error(`ensure-branch: could not switch to existing branch '${name}': ${(e.stderr || e.stdout || e.message || 'unknown').toString().trim()}`);
-  }
-}
-
 function copyActiveChange(worktreeRoot) {
   if (!existsSync(sourceChangeDir)) return;
   const targetChangeDir = join(worktreeRoot, changeRelativePath);
@@ -127,7 +109,15 @@ function copyActiveChange(worktreeRoot) {
   });
 }
 
-// Preferred: git worktree (literal arg array).
+// Isolation via a sibling worktree (literal arg array) — the only isolation
+// mode. A worktree left over from a previous run is reused by re-copying the
+// active change artifacts.
+if (existsSync(worktreePath)) {
+  copyActiveChange(worktreePath);
+  console.log(`ensure-branch: reused existing git worktree at ${worktreePath}. Make implementation edits there.`);
+  process.exit(0);
+}
+
 try {
   execFileSync('git', ['worktree', 'add', worktreePath, '-b', name], { ...GIT_OPTS, stdio: 'inherit' });
   copyActiveChange(worktreePath);
@@ -137,18 +127,9 @@ try {
   console.error(`ensure-branch: worktree creation failed: ${(e.stderr || e.stdout || e.message || 'unknown').toString().trim()}`);
 }
 
-// Fallback: local branch (literal arg array).
-try {
-  execFileSync('git', ['switch', '-c', name], { ...GIT_OPTS, stdio: 'inherit' });
-  console.log(`ensure-branch: created branch '${name}' via git switch -c. Make implementation edits there.`);
-  process.exit(0);
-} catch (e) {
-  console.error(`ensure-branch: branch creation failed: ${(e.stderr || e.stdout || e.message || 'unknown').toString().trim()}`);
-}
-
-// Both failed → require explicit approval to edit in place.
+// Creation failed → require explicit approval to edit in place.
 if (force) {
-  console.error('ensure-branch: WARNING — editing protected branch in place with --force. This modifies main/master directly.');
+  console.error('ensure-branch: WARNING — editing the current branch in place with --force after worktree creation failed. This modifies the current branch directly.');
   process.exit(0);
 }
 console.error('ensure-branch: could not create an isolated context and no --force given. STOP and ask the user for explicit approval before editing main/master.');

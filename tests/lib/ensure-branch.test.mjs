@@ -1,9 +1,11 @@
 // tests/lib/ensure-branch.test.mjs
-// Regression for #15: git branch isolation must be enforceable, not just advised.
+// Regression for #15: git isolation must be enforceable, not just advised.
 // `ensure-branch.mjs` must refuse to proceed on a protected branch when it cannot
 // isolate, must allow work on a non-protected branch (with a hint), and must honor
-// `--isolate` on non-protected branches by creating a sibling worktree (or reusing
-// an existing isolation branch) instead of silently passing.
+// `--isolate` on non-protected branches by creating (or reusing) a sibling
+// worktree instead of silently passing. Worktrees are the only isolation mode:
+// a worktree left over from a previous run is reused by re-copying the active
+// change artifacts.
 //
 // Security: every child process is spawned with execFileSync + literal argument
 // arrays — no shell, no string interpolation.
@@ -98,7 +100,7 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
     assert.match(r.out, /single safe path segment/i);
   });
 
-  it('SHALL create a sibling worktree with --isolate on a non-protected branch, carrying only active change artifacts', () => {
+  it('SHALL create a sibling worktree with --isolate on a non-protected branch, carrying only active change artifacts, without switching the current branch', () => {
     const changeDir = join(repoDir, 'changes', 'iso-change');
     mkdirSync(changeDir, { recursive: true });
     writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
@@ -111,24 +113,31 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
       assert.equal(r.ok, true, r.out);
       assert.equal(existsSync(join(worktree, 'changes', 'iso-change', 'proposal.md')), true);
       assert.equal(existsSync(join(worktree, 'changes', 'iso-change', 'README.md')), false);
+      assert.equal(currentBranch(repoDir), 'feature/work', 'creating a worktree must not switch the current branch');
     } finally {
       if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
     }
   });
 
-  it('SHALL reuse an existing isolation branch with exit 0 when --isolate is given and the branch already exists', () => {
+  it('SHALL reuse an existing sibling worktree with exit 0 when --isolate is given and the worktree already exists', () => {
     const changeDir = join(repoDir, 'changes', 'iso-existing');
     mkdirSync(changeDir, { recursive: true });
     writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
     git(repoDir, 'checkout', '-q', 'feature/work');
-    // Simulate an isolation branch left behind by a previous run.
-    git(repoDir, 'branch', 'iso-existing');
+    // Pre-create the sibling worktree as if a previous run left it behind.
+    const worktree = join(dirname(repoDir), `${basename(repoDir)}-iso-existing`);
+    git(repoDir, 'worktree', 'add', '-q', worktree, '-b', 'iso-existing');
 
-    const r = run([changeDir, 'iso-existing', '--isolate']);
+    try {
+      const r = run([changeDir, 'iso-existing', '--isolate']);
 
-    assert.equal(r.ok, true, r.out);
-    assert.match(r.out, /already exists/i, `should fall back to the existing branch, got: ${r.out}`);
-    assert.equal(currentBranch(repoDir), 'iso-existing');
+      assert.equal(r.ok, true, r.out);
+      assert.match(r.out, /reused/i, `should reuse the existing worktree, got: ${r.out}`);
+      assert.equal(existsSync(join(worktree, 'changes', 'iso-existing', 'proposal.md')), true, 'active change artifacts should be re-copied into the reused worktree');
+      assert.equal(currentBranch(repoDir), 'feature/work', 'reusing a worktree must not switch the current branch');
+    } finally {
+      if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
+    }
   });
 
   it('SHALL create a sibling worktree with --isolate and no change-name on a non-protected branch, defaulting the name to the repo name', () => {
