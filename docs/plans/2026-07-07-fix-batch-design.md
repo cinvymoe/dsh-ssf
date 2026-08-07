@@ -87,3 +87,20 @@
 5. 测试：`tests/lib/ensure-branch.test.mjs` 与 `tests/lib/cmd-isolate.test.mjs` 改用 `execFileSync` 参数数组形式（规避 plugin scanner 高危项），新增 `--isolate` 相关用例。
 
 **退出码约定（不变）**：0=放行（默认非保护分支、`--force` 批准）、1=失败（STOP，含非保护分支 + `--isolate` 且创建失败且无 `--force`）、2=用法错误。`--isolate` 与 `--force` 可同时出现（保护分支 + 原地编辑批准）。
+
+---
+
+## 2026-08-07 补充：`ssf isolate` 纯 worktree 隔离模式（isolate-worktree-default）
+
+> 关联变更：`changes/isolate-worktree-default` | 方案：纯 worktree（移除分支模式）| 基线：v1.0.0
+
+**背景**：上一补充（2026-08-05）的 `--isolate` 隔离路径仍保留"失败回退 `git switch -c`、遗留隔离分支 `git switch` 复用"的分支模式。分支模式与 worktree 语义不一致：分支切换不复制变更工件、会污染当前工作区、使 `ssf execution review` 的 base/head 基线不干净，且"回退"路径掩盖 worktree 创建失败的信号。本变更将隔离收敛为纯 worktree 模式，上一补充（2026-08-05）保留作为历史记录。
+
+**设计决策**：
+
+1. **纯 worktree 模式（移除分支模式）**：隔离环境仅通过兄弟 worktree 创建（`<repoRoot>/../<repoName>-<name>`），完全移除 `git switch -c` 回退与遗留隔离分支的 `git switch` 复用；worktree 是唯一隔离模式。`ensure-branch.mjs` 不再包含任何分支回退/分支复用代码路径。
+2. **worktree 复用语义**：`existsSync(worktreePath)` 为真时直接复用该路径并重新执行 `copyActiveChange` 复制活动变更工件；复用时不检查 worktree 是否属于本仓库（与分支复用一致的宽松语义）。复用路径与创建路径共享 `copyActiveChange`，worktree 路径方案与工件复制逻辑复用现有实现、不得改动。
+3. **`--force` 门不变**：仍仅批准保护分支原地编辑；worktree 创建失败（非"路径已存在"）且无 `--force` 时一律 exit 1（STOP），要求用户显式批准。
+4. **退出码约定不变**：0=放行（默认非保护分支、`--force` 批准）、1=失败（STOP，含 worktree 创建失败且无 `--force`）、2=用法错误。
+
+**同步**：`skills/build-executor/SKILL.md` preflight 第 1 步措辞改为 worktree 唯一模式（"creates a sibling git worktree（位于仓库旁；路径已存在时复用）when you are on `main`/`master` or pass `--isolate`"），`ssf isolate <change-dir> --isolate` 重跑与 STOP/`--force` 流程不变；`CHANGELOG.md` [Unreleased] 新增条目。
