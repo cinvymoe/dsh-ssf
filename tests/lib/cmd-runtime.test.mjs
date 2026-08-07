@@ -44,7 +44,7 @@ describe('ssf runtime', () => {
 
   it('dispatches infer and guard while preserving their established output', () => {
     const infer = runRuntime(['infer', '/tmp/ssf-runtime-missing-change']);
-    const guard = runRuntime(['guard', 'check', 'docs/examples/add-dark-mode', 'exploring', 'specifying', '--json']);
+    const guard = runRuntime(['guard', 'check', 'docs/examples/add-dark-mode', 'specifying', 'bridging', '--json']);
 
     assert.equal(infer.status, 0, infer.stderr);
     assert.deepEqual(JSON.parse(infer.stdout).mode, 'full');

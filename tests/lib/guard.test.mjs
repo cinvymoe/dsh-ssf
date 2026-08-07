@@ -110,10 +110,23 @@ describe('guard: transition matrix', () => {
     }
   }
 
-  it('exploring→specifying permits a confirmed intake before planning artifacts exist', () => {
+  it('exploring→specifying requires DP-1 to be recorded before planning artifacts exist', () => {
+    writeFileSync(join(tempDir, '.spec-superflow.yaml'), 'state: exploring\nworkflow: full\ndp_1_result: confirmed: intake requirements\n');
     const result = runGuard('exploring', 'specifying');
     assert.equal(result.exitCode, 0, `Expected exit 0 but got ${result.exitCode}: ${JSON.stringify(result.output)}`);
-    assert.deepEqual(result.output.checks, []);
+    const dims = result.output.checks.map(c => c.dimension);
+    assert.deepEqual(dims, ['dp-gate-passed']);
+    assert.equal(result.output.checks[0].pass, true);
+  });
+
+  it('exploring→specifying fails in full workflow when DP-1 is not recorded', () => {
+    writeFileSync(join(tempDir, '.spec-superflow.yaml'), 'state: exploring\nworkflow: full\ndp_1_result: null\n');
+    const result = runGuard('exploring', 'specifying');
+    assert.equal(result.exitCode, 1, `Expected exit 1 but got ${result.exitCode}: ${JSON.stringify(result.output)}`);
+    const dpCheck = result.output.checks.find(c => c.dimension === 'dp-gate-passed');
+    assert.ok(dpCheck);
+    assert.equal(dpCheck.pass, false);
+    assert.match(dpCheck.failures.join('\n'), /DP-1/);
   });
 
   it('specifying→bridging requires artifacts-exist + schema-valid', () => {

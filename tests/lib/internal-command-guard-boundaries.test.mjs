@@ -66,10 +66,12 @@ describe('internal command and guard boundaries', () => {
 
   it('evaluates a guard transition in-process with injected streams', async () => {
     const { io, output } = captureIo();
-    const result = await runGuard(['check', '.', 'exploring', 'specifying', '--json'], io);
+    const dir = makeTempDir('ssf-guard-streams-');
+    writeFileSync(join(dir, '.spec-superflow.yaml'), 'state: exploring\nworkflow: full\ndp_1_result: confirmed: intake\n');
+    const result = await runGuard(['check', dir, 'exploring', 'specifying', '--json'], io);
 
     assert.equal(result.exitCode, 0);
-    assert.deepEqual(JSON.parse(output.stdout), { pass: true, checks: [] });
+    assert.deepEqual(JSON.parse(output.stdout), { pass: true, checks: [{ dimension: 'dp-gate-passed', pass: true, failures: [] }] });
     assert.equal(output.stderr, '');
   });
 

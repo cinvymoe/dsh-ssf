@@ -67,11 +67,11 @@ function cleanup(dir) {
   if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
 }
 
-function runGuard(from, to, dir, workflow = 'full') {
+function runGuard(from, to, dir, workflow = 'full', stateExtras = '') {
   try {
     // Write a minimal .spec-superflow.yaml so guard can read state
     const stateFile = join(dir, '.spec-superflow.yaml');
-    writeFileSync(stateFile, `state: ${from}\nworkflow: ${workflow}\nchange_name: test\n`);
+    writeFileSync(stateFile, `state: ${from}\nworkflow: ${workflow}\nchange_name: test\n${stateExtras}`);
 
     // Also need a minimal proposal.md for artifacts-exist check
     writeFileSync(join(dir, 'proposal.md'), '# Test\n\n## Why\n\nTest change for guard matrix audit.\n\n## What Changes\n\n- Test.\n');
@@ -286,5 +286,48 @@ describe('Fast-path validation', () => {
     const output = guardOutput(result);
     assert.equal(result.ok, false, 'exploring -> approved-for-build must be rejected in full workflow');
     assert.match(output, /workflow-mode|fast-path|tweak/i);
+  });
+});
+
+// ─── DP-1 hard gate on exploring → specifying ───
+// Requirement: DP-1 需求确认门禁
+// Scenario: full 工作流在未记录 dp_1_result 时禁止进入 specifying
+describe('DP-1 gate on exploring → specifying', () => {
+  let dir;
+  before(() => { dir = makeChangeDir(); });
+  after(() => { cleanup(dir); });
+
+  it('SHALL block exploring → specifying in full workflow when dp_1_result is null', () => {
+    const result = runGuard('exploring', 'specifying', dir, 'full', 'dp_1_result: null\n');
+    assert.equal(result.ok, false, 'full workflow must reject an unrecorded DP-1');
+    const output = guardOutput(result);
+    assert.match(output, /DP-1/, `failure must mention DP-1: ${output}`);
+  });
+
+  it('SHALL allow exploring → specifying in full workflow when dp_1_result is confirmed', () => {
+    const result = runGuard('exploring', 'specifying', dir, 'full', 'dp_1_result: confirmed: xxx\n');
+    assert.equal(result.ok, true, `confirmed DP-1 must pass: ${guardOutput(result)}`);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.pass, true);
+    assert.deepEqual(parsed.checks, [{ dimension: 'dp-gate-passed', pass: true, failures: [] }]);
+  });
+
+  it('SHALL allow exploring → specifying in full workflow when dp_1_result is waived', () => {
+    const result = runGuard('exploring', 'specifying', dir, 'full', 'dp_1_result: waived: 用户明确豁免\n');
+    assert.equal(result.ok, true, `waived DP-1 must pass: ${guardOutput(result)}`);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.pass, true);
+  });
+
+  it('SHALL exempt quick workflow from the DP-1 gate on exploring → specifying', () => {
+    const result = runGuard('exploring', 'specifying', dir, 'quick', 'dp_1_result: null\n');
+    assert.equal(result.ok, true, `quick workflow must bypass DP-1: ${guardOutput(result)}`);
+    assert.deepEqual(JSON.parse(result.stdout).checks, []);
+  });
+
+  it('SHALL exempt tweak workflow from the DP-1 gate on exploring → specifying', () => {
+    const result = runGuard('exploring', 'specifying', dir, 'tweak', 'dp_1_result: null\n');
+    assert.equal(result.ok, true, `tweak workflow must bypass DP-1: ${guardOutput(result)}`);
+    assert.deepEqual(JSON.parse(result.stdout).checks, []);
   });
 });
