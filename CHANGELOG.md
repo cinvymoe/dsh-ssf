@@ -9,7 +9,7 @@ The format loosely follows Keep a Changelog.
 ### Added
 
 - **`ssf isolate` 兄弟 worktree 复用**：兄弟 worktree 路径（仓库旁 `<repo>-<name>`）已存在时直接复用并重新复制活动变更工件；复用路径与创建路径共享 `copyActiveChange`，复用时不检查 worktree 是否属于本仓库（与分支复用一致的宽松语义）。
-- **`ssf isolate` 非保护分支隔离选择（`--isolate`）**：非保护分支（非 `main`/`master`）默认以退出码 0 放行，并追加提示 `To create an isolated context, re-run with --isolate.`；带 `--isolate` 重跑则在任意分支上显式创建隔离环境，语义与保护分支强制隔离一致（优先 `git worktree add` 兄弟 worktree，失败回退 `git switch -c`；上一次运行遗留的隔离分支直接复用 `git switch`）。保护分支强制隔离语义不变，`--force` 仍仅用于批准保护分支原地编辑。
+- **`ssf isolate` 非保护分支隔离选择（`--isolate`）**：非保护分支（非 `main`/`master`）默认以退出码 0 放行，并追加提示 `To create an isolated context, re-run with --isolate.`；带 `--isolate` 重跑则在任意分支上显式创建隔离环境，语义与保护分支强制隔离一致（通过兄弟 worktree，见下方"纯 worktree 隔离模式"条目）。保护分支强制隔离语义不变，`--force` 仍仅用于批准保护分支原地编辑。
 
 ### Changed
 
