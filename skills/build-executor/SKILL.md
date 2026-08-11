@@ -14,9 +14,10 @@ For Full or legacy Hotfix, read `execution-contract.md`, `tasks.md`, relevant `s
 Check workflow mode and receipt first. Tweak → direct edit mode. Quick or a valid direct incident Hotfix → Direct Quick and Hotfix. Full or legacy Hotfix → standard contract-first discipline.
 
 Branch/worktree preflight before ANY implementation edit (mandatory — do not skip):
-1. Run the isolation check:
+1. Run the isolation check with the change name so the worktree/branch are named
+   after the change (change-name = the last path segment of the change dir):
    ```bash
-   ssf isolate <change-dir>
+   ssf isolate <change-dir> <change-name>
    ```
    This script enforces git isolation: it creates a sibling git worktree（位于
    仓库旁；路径已存在时复用）when you are on `main`/`master` or pass `--isolate`,
@@ -24,11 +25,11 @@ Branch/worktree preflight before ANY implementation edit (mandatory — do not s
    non-protected branch it exits zero by default and prints a hint that you may
    re-run with `--isolate` to force an isolated environment.
 2. If `ssf isolate` exits non-zero: STOP. Do not edit `main`/`master` in place.
-   Ask the user for explicit approval (and re-run with `ssf isolate <change-dir> --force`
+   Ask the user for explicit approval (and re-run with `ssf isolate <change-dir> <change-name> --force`
    only after they approve).
 3. If it succeeds on a non-protected branch and prints the `--isolate` hint: ask
    the user whether they want an isolated environment. If they agree, re-run with
-   `ssf isolate <change-dir> --isolate`; if they decline, continue on the current
+   `ssf isolate <change-dir> <change-name> --isolate`; if they decline, continue on the current
    branch.
 4. Once `ssf isolate` succeeds (with or without `--isolate`), report the chosen
    branch/worktree and make all implementation edits there.
