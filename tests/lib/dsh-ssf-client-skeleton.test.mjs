@@ -16,10 +16,10 @@ describe('dsh-ssf client bundle structure', () => {
   });
 
   it('exports a cordis plugin module { apply, inject }', () => {
-    assert.match(clientSource, /exports\.apply|module\.exports\.[^{]*apply|apply\s*[:(]/);
-    assert.match(clientSource, /inject:\s*\[/);
-    assert.match(clientSource, /inject:\s*\[[^\]]*["']slots["']/);
-    assert.match(clientSource, /inject:\s*\[[^\]]*["']settingsScope["']/);
+    assert.match(clientSource, /exports\.apply\s*=\s*apply/);
+    assert.match(clientSource, /exports\.inject\s*=\s*\[/);
+    assert.match(clientSource, /exports\.inject\s*=\s*\[[^\]]*["']slots["']/);
+    assert.match(clientSource, /exports\.inject\s*=\s*\[[^\]]*["']settingsScope["']/);
   });
 
   it('binds the ssf settings namespace scope', () => {
