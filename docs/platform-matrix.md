@@ -44,3 +44,13 @@ npx spec-superflow@latest install-<id>
 ```
 
 Claude Code / Codex / Copilot / Gemini / OpenCode / Trae 走各自 marketplace 或本地目录，详见 [INSTALL.md](../INSTALL.md)。
+
+## DeepSeek Harness
+
+| 操作 | 命令 / 步骤 |
+|------|-------------|
+| 安装 | `dsh plugin --profile web add <spec-superflow>/packages/dsh-ssf`，并在 `$DSH_HOME/profiles/web/cordis.patch.yml` 追加 `- insert: [{ id: ssf, name: dsh-ssf }]` |
+| 升级 | `git pull` 更新仓库后重启 profile（symlink 安装自动生效） |
+| 卸载 | 移除补丁行 + `dsh plugin --profile web remove dsh-ssf` |
+
+详见 `packages/dsh-ssf/README.md`。

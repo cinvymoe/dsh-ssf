@@ -51,6 +51,12 @@ Claude Code 的主流方式是插件 marketplace：
 
 Marketplace 安装自动加载 hooks，每次新会话自动注入上下文。
 
+### DeepSeek Harness（dsh-ssf 插件）
+
+spec-superflow 以 `dsh-ssf` 插件形式接入 DSH（DeepSeek Harness）web profile：host 半注册
+`ssf_*` 原生工具与变更状态服务，client 半提供设置页"Spec 工作流"tab。安装与卸载见
+`packages/dsh-ssf/README.md`；工作流技能已改为"优先调用 `ssf_*` 原生工具、CLI 回退"。
+
 ### Cursor（Skills 目录 / GitHub 导入）
 
 ```bash

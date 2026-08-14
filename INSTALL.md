@@ -912,3 +912,9 @@ Checkpoint 是任务级恢复上下文。`result-ready` handoff 在继续受影�
 Full/legacy 推荐流程：`exploring -> specifying -> bridging -> approved-for-build -> execution plan -> executing -> closing`
 
 Quick（≤3 单模块代码文件/任务）与 direct Hotfix（incident，≤2）走 `exploring -> approved-for-build -> executing`。Quick 低风险时同轮推荐/接受；若涉及 PRD、Spec/Design、API、数据/权限或跨模块，必须展示风险并由用户选择 Quick 或 Full。选择 Quick 时记录 `tdd`、`new-test` 或 `bounded` 验证策略；direct Hotfix 必须复现原症状回归。legacy Hotfix 才走最小契约、DP-3、plan/review 路径。
+
+## DeepSeek Harness（dsh-ssf 插件）
+
+DSH（DeepSeek Harness）web profile 通过 `dsh-ssf` 插件接入 spec-superflow：host 半提供
+`ssf_*` 原生工具与变更状态服务，client 半提供设置页"Spec 工作流"tab。安装、启用（补丁行）、
+验证与卸载步骤见 `packages/dsh-ssf/README.md`。

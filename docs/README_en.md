@@ -49,6 +49,14 @@ Claude Code's primary installation path is the plugin marketplace:
 /plugin update spec-superflow@spec-superflow   # upgrade
 ```
 
+### DeepSeek Harness (dsh-ssf plugin)
+
+spec-superflow plugs into DSH (DeepSeek Harness) web profiles as the `dsh-ssf`
+plugin: the host half registers `ssf_*` native tools and a change-status
+service, the browser half adds a read-only **Spec 工作流** settings tab.
+Install/verify/uninstall: `packages/dsh-ssf/README.md`. The workflow skills now
+prefer the native `ssf_*` tools and fall back to the `ssf` CLI.
+
 ### Cursor (Skills directories / GitHub import)
 
 ```bash
