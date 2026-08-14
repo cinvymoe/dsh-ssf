@@ -33,6 +33,14 @@ describe('dsh-ssf client bundle structure', () => {
     assert.match(clientSource, /order:\s*30/);
   });
 
+  it('renders empty/list/detail branches with the snapshot data', () => {
+    assert.match(clientSource, /未发现变更或投影不可用/);
+    assert.match(clientSource, /formatChangeList\(snapshot/);
+    assert.match(clientSource, /\.map\(\(c\) =>/);
+    assert.match(clientSource, /formatChangeDetail\(selected\)/);
+    assert.match(clientSource, /`\$\{c\.name\} — \$\{c\.state\}/);
+  });
+
   it('uses React.createElement (no JSX) and requires react', () => {
     assert.match(clientSource, /require\(\s*["']react["']\s*\)/);
     assert.match(clientSource, /createElement/);

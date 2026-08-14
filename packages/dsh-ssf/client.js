@@ -56,6 +56,23 @@ window.__ModuleLoader__.load({
 		}
 
 		// ---- "Spec 工作流" settings section ----
+		const h = react.createElement;
+		const styles = {
+			wrap: { padding: "12px 16px", fontFamily: "inherit", fontSize: "13px" },
+			empty: { color: "var(--dsw-alias-label-tertiary, #999)" },
+			list: { listStyle: "none", margin: 0, padding: 0 },
+			item: {
+				padding: "6px 8px", borderRadius: "6px", cursor: "pointer",
+				borderBottom: "1px solid var(--dsw-alias-border-l1, #eee)",
+			},
+			itemSelected: {
+				background: "var(--dsw-alias-fill-soft, #f0f0f0)",
+				borderRadius: "6px",
+			},
+			detail: { marginTop: "10px", padding: "8px 10px", border: "1px solid var(--dsw-alias-border-l1, #eee)", borderRadius: "6px" },
+			row: { margin: "4px 0", wordBreak: "break-all" },
+		};
+
 		function SsfSection({ scope }) {
 			// Re-render when the host pushes a new snapshot.
 			const [, setTick] = react.useState(0);
@@ -63,7 +80,36 @@ window.__ModuleLoader__.load({
 				if (!scope) return undefined;
 				return scope.subscribe(() => setTick((t) => t + 1));
 			}, [scope]);
-			return react.createElement("div", { style: { padding: "12px" } }, "Spec 工作流");
+			const [selectedName, setSelectedName] = react.useState(null);
+
+			const snapshot = scope ? scope.getSnapshot() : undefined;
+			const changes = formatChangeList(snapshot && snapshot.changes);
+			const selected = changes.find((c) => c.name === selectedName) ?? null;
+
+			if (changes.length === 0) {
+				return h("div", { style: styles.wrap },
+					h("p", { style: styles.empty }, "未发现变更或投影不可用"));
+			}
+
+			const list = h("ul", { style: styles.list }, changes.map((c) =>
+				h("li", {
+					key: c.name,
+					style: c.name === selectedName ? { ...styles.item, ...styles.itemSelected } : styles.item,
+					onClick: () => setSelectedName(c.name),
+				}, `${c.name} — ${c.state} (${c.workflow})`)));
+
+			const detailRows = selected
+				? [["name", selected.name], ["state", selected.state], ["workflow", selected.workflow]]
+					.concat(formatChangeDetail(selected))
+				: [];
+			const detail = selected
+				? h("div", { style: styles.detail },
+					detailRows.map(([key, value]) =>
+						h("p", { key, style: styles.row },
+							h("strong", null, `${key}: `), String(value))))
+				: null;
+
+			return h("div", { style: styles.wrap }, list, detail);
 		}
 
 		function apply(ctx) {
