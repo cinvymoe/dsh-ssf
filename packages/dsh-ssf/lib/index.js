@@ -18,7 +18,11 @@ import { registerTools } from './tools.js';
 
 export const name = 'ssf';
 
-export const inject = [];
+// Cordis fiber injection: every ctx.<service> the plugin reads must be
+// declared here or the loader throws "cannot get property X without inject".
+// tools: registerTools; settings: ssf namespace; workspaceRegistry: root
+// resolution; subprocess: ssf_run handler.
+export const inject = ['tools', 'settings', 'workspaceRegistry', 'subprocess'];
 
 const SETTINGS_SCHEMA = z.object({
   changes: z.array(z.dict(z.any())).default([]),

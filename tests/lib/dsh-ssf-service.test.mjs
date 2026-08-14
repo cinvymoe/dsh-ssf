@@ -104,6 +104,12 @@ function makeFakeCtx({ workspaces } = {}) {
 }
 
 describe('dsh-ssf service registration', () => {
+  it('declares every ctx.<service> it reads in the cordis inject list', () => {
+    // The real harness throws "cannot get property X without inject" for any
+    // un-injected service access (caught by wave-4 integration); this locks it.
+    assert.deepEqual([...plugin.inject].sort(), ['settings', 'subprocess', 'tools', 'workspaceRegistry']);
+  });
+
   it('registers an ssf service exposing scan/summary/refresh', () => {
     const root = makeWorkspace();
     const { ctx, calls } = makeFakeCtx({ workspaces: [{ sessionIds: ['s1'], path: root }] });
