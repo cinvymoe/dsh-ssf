@@ -42,6 +42,10 @@ const COMMANDS = {
   'uninstall-codebuddy': () => import('./lib/cmd-uninstall-codebuddy.mjs'),
 };
 
+// Exported for programmatic consumers (dsh-ssf's ssf_run validates subcommand
+// names against this table). Behavior-neutral: the CLI itself is unchanged.
+export const SSF_COMMANDS = COMMANDS;
+
 const HELP = `spec-superflow (ssf) — Spec-first workflow CLI
 
 Usage: ssf <command> [options]

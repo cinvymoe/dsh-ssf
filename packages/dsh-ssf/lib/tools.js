@@ -9,8 +9,9 @@ import { scanChanges, summarizeChange } from './change-scanner.js';
 import { readState } from '../../../scripts/lib/state-loader.mjs';
 import { readWorkflowSelection } from '../../../scripts/lib/workflow-recommendation.mjs';
 import { Validator } from '../../../dist/index.js';
-import { validateSpecPathLayout, relativeSpecPath } from '../../../scripts/lib/spec-paths.mjs';
+import { validateSpecPathLayout } from '../../../scripts/lib/spec-paths.mjs';
 import { readPlan, describeWaves } from '../../../scripts/lib/execution-plan.mjs';
+import { SSF_COMMANDS } from '../../../scripts/spec-superflow.mjs';
 
 const TOOL_IDS = [
   'ssf_list',
@@ -197,6 +198,67 @@ export function registerTools(ctx, { resolveRoot }) {
       },
     }));
   }
+
+  // ssf_run: generic fallback that forwards any ssf subcommand through the
+  // ctx.subprocess seam (the ssf binary on PATH), returning stdout/stderr/exitCode.
+  ctx.tools.register(defineTool({
+    name: 'ssf_run',
+    description: 'Run any ssf CLI subcommand not covered by the structured tools; returns stdout, stderr, and the exit code.',
+    parameters: {
+      arguments: {
+        type: 'array',
+        required: true,
+        items: { type: 'string' },
+        description: 'ssf subcommand name followed by its arguments (e.g. ["handoff", "list", "changes/x"]).',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          ok: { type: 'boolean', required: true },
+          stdout: { type: 'string', required: true },
+          stderr: { type: 'string', required: true },
+          exitCode: { type: 'integer', required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.stderr ? `exit ${value.exitCode}\n${value.stderr}\n${value.stdout}` : `exit ${value.exitCode}\n${value.stdout}`,
+      }],
+    },
+    async execute(args) {
+      const argv = args.arguments;
+      if (!Array.isArray(argv) || argv.length === 0) {
+        throw new Error('ssf_run: arguments must be a non-empty array of strings');
+      }
+      for (const arg of argv) {
+        if (typeof arg !== 'string') throw new Error('ssf_run: every argument must be a string');
+        if (arg.split('/').includes('..') || isAbsolute(arg)) {
+          throw new Error(`ssf_run: traversal or absolute path arguments are not allowed (${arg})`);
+        }
+      }
+      if (!Object.hasOwn(SSF_COMMANDS, argv[0])) {
+        throw new Error(`ssf_run: unknown ssf subcommand "${argv[0]}"`);
+      }
+      const root = resolveRoot();
+      const handle = ctx.subprocess.spawn({
+        argv: ['ssf', ...argv],
+        cwd: root,
+        stdio: {
+          stdin: 'ignore',
+          stdout: { maxBytes: 65536 },
+          stderr: { maxBytes: 65536 },
+        },
+        graceMs: 30000,
+      });
+      const outcome = await handle.done;
+      const stdout = handle.collected.stdout?.readFrom(0).text ?? '';
+      const stderr = handle.collected.stderr?.readFrom(0).text ?? '';
+      return { ok: true, stdout, stderr, exitCode: outcome.exitCode ?? -1 };
+    },
+  }));
 }
 
 /**
