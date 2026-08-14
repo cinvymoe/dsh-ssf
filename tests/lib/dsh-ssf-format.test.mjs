@@ -14,12 +14,12 @@ const ACTIVE_B = { name: 'b-active', state: 'specifying', workflow: 'full' };
 describe('formatChangeList', () => {
   it('sorts active changes by name, closing/abandoned last', () => {
     const out = formatChangeList([CLOSED, ABANDONED, ACTIVE_B, ACTIVE_A]);
-    assert.deepEqual(out.map((c) => c.name), ['a-active', 'b-active', 'z-closed', 'a-abandoned']);
+    assert.deepEqual(out.map((c) => c.name), ['a-active', 'b-active', 'a-abandoned', 'z-closed']);
   });
 
-  it('keeps closing before abandoned within the terminal group', () => {
+  it('sorts terminal changes (closing/abandoned) by name within the terminal group', () => {
     const out = formatChangeList([ABANDONED, CLOSED]);
-    assert.deepEqual(out.map((c) => c.name), ['z-closed', 'a-abandoned']);
+    assert.deepEqual(out.map((c) => c.name), ['a-abandoned', 'z-closed']);
   });
 
   it('returns [] for non-array input and does not mutate the input', () => {
