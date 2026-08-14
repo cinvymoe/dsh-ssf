@@ -1,11 +1,16 @@
 // packages/dsh-ssf/lib/tools.js — six structured ssf tools + registration
-// Handlers: ssf_list / ssf_state / ssf_workflow implemented (task 2.2);
-// ssf_execution / ssf_validate / ssf_guard land in task 2.3; ssf_run in 2.4.
-import { isAbsolute, join } from 'node:path';
+// Handlers: ssf_list / ssf_state / ssf_workflow (task 2.2); ssf_execution /
+// ssf_validate / ssf_guard (task 2.3); ssf_run lands in task 2.4.
+import { isAbsolute, join, basename } from 'node:path';
+import { readFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { scanChanges, summarizeChange } from './change-scanner.js';
 import { readState } from '../../../scripts/lib/state-loader.mjs';
 import { readWorkflowSelection } from '../../../scripts/lib/workflow-recommendation.mjs';
+import { Validator } from '../../../dist/index.js';
+import { validateSpecPathLayout, relativeSpecPath } from '../../../scripts/lib/spec-paths.mjs';
+import { readPlan, describeWaves } from '../../../scripts/lib/execution-plan.mjs';
 
 const TOOL_IDS = [
   'ssf_list',
@@ -103,6 +108,10 @@ export function registerTools(ctx, { resolveRoot }) {
     // parameters omit the key entirely (see dsh-tool-jobs' `wait` parameter).
     if (!isList) changeDir.required = true;
     const parameters = { changeDir };
+    if (id === 'ssf_guard') {
+      parameters.fromState = { type: 'string', required: true, description: 'Source state machine state for the transition guard check.' };
+      parameters.toState = { type: 'string', required: true, description: 'Target state machine state for the transition guard check.' };
+    }
 
     ctx.tools.register(defineTool({
       name: id,
@@ -153,9 +162,66 @@ export function registerTools(ctx, { resolveRoot }) {
             },
           };
         }
-        // Stub — full handler logic lands in task 2.3.
-        throw new Error(`implemented in task 2.3 (${id})`);
+        if (id === 'ssf_validate') {
+          return { ok: true, report: validateChange(changePath) };
+        }
+        if (id === 'ssf_guard') {
+          const guardScript = join(root, 'scripts', 'guard', 'guard.mjs');
+          const result = spawnSync(
+            process.execPath,
+            [guardScript, 'check', changePath, args.fromState, args.toState, '--json'],
+            { encoding: 'utf8' },
+          );
+          let guard;
+          try {
+            guard = JSON.parse(result.stdout);
+          } catch {
+            throw new Error(`guard check failed: ${result.stderr || result.stdout}`);
+          }
+          return { ok: true, guard };
+        }
+        if (id === 'ssf_execution') {
+          const plan = readPlan(changePath);
+          return { ok: true, execution: { current: plan !== null, waves: describeWaves(changePath, plan) } };
+        }
+        throw new Error(`unreachable tool ${id}`);
       },
     }));
   }
+}
+
+/**
+ * Aggregate the CLI's artifact validation (proposal + delta specs) into one
+ * report. Mirrors scripts/validate-artifacts: proposal via
+ * Validator.validateChangeContent, specs via validateDeltaSpec, spec layout
+ * via validateSpecPathLayout. Never throws on missing files (proposal absent
+ * contributes no issues; spec layout failures become ERROR issues).
+ */
+function validateChange(changePath) {
+  const validator = new Validator(false);
+  const changeName = basename(changePath);
+  const issues = [];
+
+  const proposalPath = join(changePath, 'proposal.md');
+  if (existsSync(proposalPath)) {
+    const report = validator.validateChangeContent(changeName, readFileSync(proposalPath, 'utf-8'));
+    issues.push(...report.issues);
+  }
+
+  const layout = validateSpecPathLayout(changePath, { requireSpecs: true });
+  for (const failure of layout.failures) {
+    issues.push({ level: 'ERROR', path: 'specs', message: failure });
+  }
+  for (const specFile of layout.specFiles) {
+    const report = validator.validateDeltaSpec(readFileSync(specFile, 'utf-8'));
+    issues.push(...report.issues);
+  }
+
+  const summary = { errors: 0, warnings: 0, info: 0 };
+  for (const issue of issues) {
+    if (issue.level === 'ERROR') summary.errors += 1;
+    else if (issue.level === 'WARNING') summary.warnings += 1;
+    else summary.info += 1;
+  }
+  return { valid: summary.errors === 0, issues, summary };
 }
