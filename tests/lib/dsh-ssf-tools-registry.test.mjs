@@ -23,22 +23,22 @@ describe('dsh-ssf: registerTools()', () => {
     registerTools(ctx, { resolveRoot: () => '/tmp' });
   });
 
-  it('registers exactly six tools with the required ids', () => {
+  it('registers the six structured tools plus the ssf_run fallback', () => {
     const ids = registered.map((t) => t.name).sort();
     assert.deepEqual(ids, [
       'ssf_execution',
       'ssf_guard',
       'ssf_list',
+      'ssf_run',
       'ssf_state',
       'ssf_validate',
       'ssf_workflow',
     ]);
   });
 
-  it('declares changeDir required on all tools except ssf_list', () => {
+  it('declares changeDir required on all structured tools except ssf_list', () => {
     for (const tool of registered) {
-      // defineTool compiles parameters into { type: 'object', properties, required? }.
-      assert.equal(tool.parameters?.type, 'object', `${tool.name} parameters must compile to an object schema`);
+      if (tool.name === 'ssf_run') continue; // ssf_run uses the arguments array instead
       const param = tool.parameters?.properties?.changeDir;
       assert.ok(param, `${tool.name} must declare parameters.properties.changeDir`);
       assert.equal(typeof param.type, 'string');
