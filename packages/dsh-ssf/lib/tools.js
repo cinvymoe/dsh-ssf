@@ -1,6 +1,11 @@
 // packages/dsh-ssf/lib/tools.js — six structured ssf tools + registration
-// Handler bodies are stubs in task 2.1; full logic lands in tasks 2.2/2.3/2.4.
+// Handlers: ssf_list / ssf_state / ssf_workflow implemented (task 2.2);
+// ssf_execution / ssf_validate / ssf_guard land in task 2.3; ssf_run in 2.4.
+import { isAbsolute, join } from 'node:path';
 import { defineTool } from '@deepseek-ai/dsh-tools';
+import { scanChanges, summarizeChange } from './change-scanner.js';
+import { readState } from '../../../scripts/lib/state-loader.mjs';
+import { readWorkflowSelection } from '../../../scripts/lib/workflow-recommendation.mjs';
 
 const TOOL_IDS = [
   'ssf_list',
@@ -16,13 +21,14 @@ const TOOL_IDS = [
 // type/properties/additionalProperties (explicit boolean) and mark each
 // required property with a property-level `required: true` — no top-level
 // `required` array.
-function envelopeSchema(payloadField) {
+function envelopeSchema(payloadField, extraProperties = {}) {
   return {
     type: 'object',
     additionalProperties: false,
     properties: {
       ok: { type: 'boolean', required: true },
       [payloadField]: { type: 'object', additionalProperties: true, required: true },
+      ...extraProperties,
     },
   };
 }
@@ -40,7 +46,10 @@ const OUTPUTS = {
       },
     },
   },
-  ssf_state: envelopeSchema('state'),
+  ssf_state: envelopeSchema('state', {
+    stateFileMissing: { type: 'boolean' },
+    parseError: { type: 'string' },
+  }),
   ssf_workflow: envelopeSchema('workflow'),
   ssf_execution: envelopeSchema('execution'),
   ssf_validate: envelopeSchema('report'),
@@ -55,6 +64,26 @@ const DESCRIPTIONS = {
   ssf_validate: 'Validate one change\'s planning artifacts against the spec-superflow schema rules (proposal + specs).',
   ssf_guard: 'Run the phase-transition guard check for one change (dp gates and artifact conditions).',
 };
+
+/**
+ * Resolve a change directory argument to a path strictly inside
+ * <workspaceRoot>/changes/. Rejects empty, traversal ('..'), absolute, and
+ * non-normalized inputs; throws Error('invalid changeDir: ...').
+ */
+export function resolveChangePath(workspaceRoot, changeDir) {
+  if (typeof changeDir !== 'string' || changeDir.length === 0) {
+    throw new Error('invalid changeDir: must be a non-empty change directory name');
+  }
+  if (isAbsolute(changeDir)) {
+    throw new Error(`invalid changeDir: absolute paths are not allowed (${changeDir})`);
+  }
+  // Reject any traversal segment in the raw input (also catches non-normalized
+  // spellings like 'a/../b' even though they normalize to a safe location).
+  if (changeDir.split('/').includes('..')) {
+    throw new Error(`invalid changeDir: traversal is not allowed (${changeDir})`);
+  }
+  return join(workspaceRoot, 'changes', changeDir);
+}
 
 /**
  * Register the six structured ssf tools on ctx.tools.
@@ -74,6 +103,7 @@ export function registerTools(ctx, { resolveRoot }) {
     // parameters omit the key entirely (see dsh-tool-jobs' `wait` parameter).
     if (!isList) changeDir.required = true;
     const parameters = { changeDir };
+
     ctx.tools.register(defineTool({
       name: id,
       description: DESCRIPTIONS[id],
@@ -82,9 +112,49 @@ export function registerTools(ctx, { resolveRoot }) {
         schema: OUTPUTS[id],
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
       },
-      async execute() {
-        // Stub — full handler logic lands in tasks 2.2/2.3/2.4.
-        throw new Error(`implemented in task 2.2/2.3 (${id})`);
+      async execute(args) {
+        const root = resolveRoot();
+        if (isList && args.changeDir !== undefined) {
+          resolveChangePath(root, args.changeDir);
+        }
+        if (id === 'ssf_list') {
+          return { ok: true, changes: scanChanges(root) };
+        }
+        const changePath = resolveChangePath(root, args.changeDir);
+        if (id === 'ssf_state') {
+          const summary = summarizeChange(changePath);
+          return {
+            ok: true,
+            state: summary.raw,
+            stateFileMissing: summary.stateFileMissing ?? undefined,
+            parseError: summary.parseError ?? undefined,
+          };
+        }
+        if (id === 'ssf_workflow') {
+          const state = readState(changePath);
+          const receipt = readWorkflowSelection(changePath);
+          const workflow = state.workflow ?? 'auto';
+          let status;
+          if (receipt.exists && receipt.valid) {
+            status = receipt.record?.selection?.mode === workflow
+              ? 'selected'
+              : (receipt.record?.status ?? 'recorded');
+          } else {
+            status = receipt.exists ? 'invalid' : 'missing-receipt';
+          }
+          return {
+            ok: true,
+            workflow: {
+              workflow,
+              receiptExists: receipt.exists,
+              receiptValid: receipt.valid,
+              status,
+              recommendation: receipt.record?.recommendation?.mode ?? null,
+            },
+          };
+        }
+        // Stub — full handler logic lands in task 2.3.
+        throw new Error(`implemented in task 2.3 (${id})`);
       },
     }));
   }
