@@ -52,6 +52,16 @@ const OUTPUTS = {
     },
   },
   ssf_state: envelopeSchema('state', {
+    // state is `raw` verbatim and is null when the state file is missing or
+    // corrupt (degradation contract) — the schema must admit null or the
+    // dsh-tools runtime rejects the result with ToolOutputError.
+    state: {
+      oneOf: [
+        { type: 'object', additionalProperties: true },
+        { type: 'null' },
+      ],
+      required: true,
+    },
     stateFileMissing: { type: 'boolean' },
     parseError: { type: 'string' },
   }),
@@ -132,12 +142,11 @@ export function registerTools(ctx, { resolveRoot }) {
         const changePath = resolveChangePath(root, args.changeDir);
         if (id === 'ssf_state') {
           const summary = summarizeChange(changePath);
-          return {
-            ok: true,
-            state: summary.raw,
-            stateFileMissing: summary.stateFileMissing ?? undefined,
-            parseError: summary.parseError ?? undefined,
-          };
+          // Omit absent degradation markers — undefined values are not lossless JSON.
+          const result = { ok: true, state: summary.raw };
+          if (summary.stateFileMissing) result.stateFileMissing = true;
+          if (summary.parseError !== undefined) result.parseError = summary.parseError;
+          return result;
         }
         if (id === 'ssf_workflow') {
           const state = readState(changePath);

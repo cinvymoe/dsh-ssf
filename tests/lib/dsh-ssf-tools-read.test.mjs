@@ -108,6 +108,31 @@ describe('dsh-ssf ssf_state', () => {
     assert.equal(value.stateFileMissing, true);
   });
 
+  it('degrades with parseError on a malformed state file', async () => {
+    const { ctx, registered } = makeRegistry();
+    const { registerTools } = await import('../../packages/dsh-ssf/lib/tools.js');
+    registerTools(ctx, { resolveRoot: () => tempRoot });
+    const badDir = join(tempRoot, 'changes', 'changeBad');
+    mkdirSync(badDir, { recursive: true });
+    writeFileSync(join(badDir, '.spec-superflow.yaml'), 'state: [unclosed\n');
+    const value = await registered.ssf_state.execute({ changeDir: 'changeBad' }, {});
+    assert.equal(value.ok, true);
+    assert.equal(value.state, null);
+    assert.equal(typeof value.parseError, 'string');
+  });
+
+  it('results satisfy the registered output schema (valid and degraded)', async () => {
+    const { ctx, registered } = makeRegistry();
+    const { registerTools } = await import('../../packages/dsh-ssf/lib/tools.js');
+    registerTools(ctx, { resolveRoot: () => tempRoot });
+    const { validateJsonSchemaValue } = await import('@deepseek-ai/dsh-tools');
+    for (const changeDir of ['changeA', 'changeB']) {
+      const value = await registered.ssf_state.execute({ changeDir }, {});
+      const violations = validateJsonSchemaValue(registered.ssf_state.output.schema, value, 'result');
+      assert.deepEqual(violations, [], `ssf_state result for ${changeDir} must satisfy its output schema`);
+    }
+  });
+
   it('throws on traversal, absolute, and empty changeDir paths', async () => {
     const { ctx, registered } = makeRegistry();
     const { registerTools } = await import('../../packages/dsh-ssf/lib/tools.js');
