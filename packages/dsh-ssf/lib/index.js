@@ -14,6 +14,7 @@
 import { join } from 'node:path';
 import z from '@deepseek-ai/schemastery';
 import { scanChanges, summarizeChange } from './change-scanner.js';
+import { registerTools } from './tools.js';
 
 export const name = 'ssf';
 
@@ -47,6 +48,9 @@ export function apply(ctx) {
     summary: (changeDir) => summarizeChange(join(root, 'changes', changeDir)),
     refresh,
   });
+
+  // Six structured tools (stubs in 2.1; handlers in 2.2/2.3/2.4).
+  registerTools(ctx, { resolveRoot: () => root });
 
   // First snapshot on plugin ready.
   ctx.on('ready', () => refresh());

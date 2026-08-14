@@ -55,6 +55,7 @@ function makeFakeCtx({ workspaces } = {}) {
     replaced: [],
     provided: {},
     listeners: [],
+    toolsRegistered: [],
     sessionProjectionRegisters: 0,
     sessionAppends: 0,
   };
@@ -78,6 +79,12 @@ function makeFakeCtx({ workspaces } = {}) {
     inject: (names, fn) => fn(ctx),
     provide: (name, service) => {
       calls.provided[name] = service;
+    },
+    tools: {
+      register: (def) => {
+        calls.toolsRegistered.push(def);
+        return () => {};
+      },
     },
     on: (event, cb) => {
       calls.listeners.push({ event, cb });
