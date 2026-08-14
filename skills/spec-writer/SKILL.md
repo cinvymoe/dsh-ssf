@@ -3,6 +3,13 @@ name: spec-writer
 description: Create or refine spec-superflow planning artifacts. Invoke when the change is understood well enough to write proposal.md, specs/, design.md, and tasks.md.
 ---
 
+> **Tool-first rule (dsh-ssf plugin):** when this skill instructs running an
+> `ssf <command>`, prefer the matching native `ssf_*` tool (e.g. `ssf_state`,
+> `ssf_validate`, `ssf_run`) when the dsh-ssf plugin is loaded; fall back to
+> executing the exact `ssf <command>` via bash only when the native tools are
+> unavailable. Commands, arguments, and output handling stay identical on both
+> paths.
+
 # Spec Writer
 
 Create or refine planning artifacts when the change has moved beyond exploration.

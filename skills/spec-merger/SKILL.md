@@ -3,6 +3,13 @@ name: spec-merger
 description: Sync delta specs to main specs before closure. Invoke while an executing change has delta specs to merge into the main spec base, or when detecting spec drift across multiple changes.
 ---
 
+> **Tool-first rule (dsh-ssf plugin):** when this skill instructs running an
+> `ssf <command>`, prefer the matching native `ssf_*` tool (e.g. `ssf_state`,
+> `ssf_validate`, `ssf_run`) when the dsh-ssf plugin is loaded; fall back to
+> executing the exact `ssf <command>` via bash only when the native tools are
+> unavailable. Commands, arguments, and output handling stay identical on both
+> paths.
+
 # Spec Merger
 
 Before the final `executing → closing` transition, delta specs (ADDED/MODIFIED/REMOVED/RENAMED) must be published into the main spec base. `changes/<change>/` remains the active workflow source; root `specs/` is only the published baseline. **Specs that aren't synced become lies.** A change already in `closing` must not be routed to `spec-merger`.
