@@ -3,12 +3,12 @@ name: contract-builder
 description: Convert approved planning artifacts into an execution contract. Invoke when the user wants to start building, asks to move from planning to implementation, or when execution-contract.md is missing or stale.
 ---
 
-> **Tool-first rule (dsh-ssf plugin):** when this skill instructs running an
-> `ssf <command>`, prefer the matching native `ssf_*` tool (e.g. `ssf_state`,
-> `ssf_validate`, `ssf_run`) when the dsh-ssf plugin is loaded; fall back to
-> executing the exact `ssf <command>` via bash only when the native tools are
-> unavailable. Commands, arguments, and output handling stay identical on both
-> paths.
+> **Tool-first rule (`dsh-ssf` plugin):** when this skill instructs running a
+> CLI command through `ssf`, prefer the matching native `ssf_*` tool (e.g.
+> `ssf_state`, `ssf_validate`, `ssf_run`) when the `dsh-ssf` plugin is loaded;
+> fall back to executing the exact same command via the `ssf` CLI only when
+> the native tools are unavailable. Commands, arguments, and output handling
+> stay identical on both paths.
 
 # Contract Builder
 

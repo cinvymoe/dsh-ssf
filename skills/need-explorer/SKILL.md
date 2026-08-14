@@ -3,12 +3,12 @@ name: need-explorer
 description: Clarify intent, scope, constraints, and success criteria before artifact creation. Invoke when the request is fuzzy, the user is comparing options, or the workflow needs a stable change definition before writing artifacts.
 ---
 
-> **Tool-first rule (dsh-ssf plugin):** when this skill instructs running an
-> `ssf <command>`, prefer the matching native `ssf_*` tool (e.g. `ssf_state`,
-> `ssf_validate`, `ssf_run`) when the dsh-ssf plugin is loaded; fall back to
-> executing the exact `ssf <command>` via bash only when the native tools are
-> unavailable. Commands, arguments, and output handling stay identical on both
-> paths.
+> **Tool-first rule (`dsh-ssf` plugin):** when this skill instructs running a
+> CLI command through `ssf`, prefer the matching native `ssf_*` tool (e.g.
+> `ssf_state`, `ssf_validate`, `ssf_run`) when the `dsh-ssf` plugin is loaded;
+> fall back to executing the exact same command via the `ssf` CLI only when
+> the native tools are unavailable. Commands, arguments, and output handling
+> stay identical on both paths.
 
 # Need Explorer
 

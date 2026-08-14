@@ -3,12 +3,12 @@ name: workflow-start
 description: Primary entry point for the spec-superflow state-machine workflow. Invoke when the user is inside an active spec-superflow change directory (look for .spec-superflow.yaml, changes/<name>/, proposal.md, specs/, design.md, tasks.md, or execution-contract.md) and asks to start, continue, resume, implement, plan, or figure out the next workflow step. Also invoke when the user explicitly asks to start a new spec-superflow change or route through the spec-superflow workflow. Do not invoke for unrelated coding tasks that happen to use words like start, continue, implement, or plan.
 ---
 
-> **Tool-first rule (dsh-ssf plugin):** when this skill instructs running an
-> `ssf <command>`, prefer the matching native `ssf_*` tool (e.g. `ssf_state`,
-> `ssf_validate`, `ssf_run`) when the dsh-ssf plugin is loaded; fall back to
-> executing the exact `ssf <command>` via bash only when the native tools are
-> unavailable. Commands, arguments, and output handling stay identical on both
-> paths.
+> **Tool-first rule (`dsh-ssf` plugin):** when this skill instructs running a
+> CLI command through `ssf`, prefer the matching native `ssf_*` tool (e.g.
+> `ssf_state`, `ssf_validate`, `ssf_run`) when the `dsh-ssf` plugin is loaded;
+> fall back to executing the exact same command via the `ssf` CLI only when
+> the native tools are unavailable. Commands, arguments, and output handling
+> stay identical on both paths.
 
 # Workflow Start
 

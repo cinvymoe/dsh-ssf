@@ -3,12 +3,12 @@ name: release-archivist
 description: Close out a spec-superflow change with verification, summary, and archive readiness. Invoke when implementation is complete, verification is underway, or the user asks for a final wrap-up.
 ---
 
-> **Tool-first rule (dsh-ssf plugin):** when this skill instructs running an
-> `ssf <command>`, prefer the matching native `ssf_*` tool (e.g. `ssf_state`,
-> `ssf_validate`, `ssf_run`) when the dsh-ssf plugin is loaded; fall back to
-> executing the exact `ssf <command>` via bash only when the native tools are
-> unavailable. Commands, arguments, and output handling stay identical on both
-> paths.
+> **Tool-first rule (`dsh-ssf` plugin):** when this skill instructs running a
+> CLI command through `ssf`, prefer the matching native `ssf_*` tool (e.g.
+> `ssf_state`, `ssf_validate`, `ssf_run`) when the `dsh-ssf` plugin is loaded;
+> fall back to executing the exact same command via the `ssf` CLI only when
+> the native tools are unavailable. Commands, arguments, and output handling
+> stay identical on both paths.
 
 # Release Archivist
 

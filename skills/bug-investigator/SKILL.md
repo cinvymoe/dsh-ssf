@@ -3,12 +3,12 @@ name: bug-investigator
 description: Use when encountering any bug, test failure, or unexpected behavior during spec-superflow execution, before proposing fixes. Invoked automatically when build-executor hits a blockage.
 ---
 
-> **Tool-first rule (dsh-ssf plugin):** when this skill instructs running an
-> `ssf <command>`, prefer the matching native `ssf_*` tool (e.g. `ssf_state`,
-> `ssf_validate`, `ssf_run`) when the dsh-ssf plugin is loaded; fall back to
-> executing the exact `ssf <command>` via bash only when the native tools are
-> unavailable. Commands, arguments, and output handling stay identical on both
-> paths.
+> **Tool-first rule (`dsh-ssf` plugin):** when this skill instructs running a
+> CLI command through `ssf`, prefer the matching native `ssf_*` tool (e.g.
+> `ssf_state`, `ssf_validate`, `ssf_run`) when the `dsh-ssf` plugin is loaded;
+> fall back to executing the exact same command via the `ssf` CLI only when
+> the native tools are unavailable. Commands, arguments, and output handling
+> stay identical on both paths.
 
 # Bug Investigator
 
