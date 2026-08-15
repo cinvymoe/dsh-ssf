@@ -1,11 +1,15 @@
-// packages/dsh-ssf/lib/index.js — host-side change-status service (task 1.3)
+// packages/dsh-ssf/lib/index.js — host-side change-status service
 //
 // Registers the 'ssf' service ({ scan, summary, refresh }) and pushes
-// change-status snapshots through the 'ssf' settings namespace. The
-// session-projection route was rejected: session.append cannot carry
-// `ignorable: true` (dsh-session only forwards sourceEventSeqs/surfaceOp) and
-// dsh-session-persistence's assertEventsSupported refuses unknown event types,
-// so no projections and no custom session events are registered here.
+// change-status snapshots through the 'ssf' settings namespace. First push
+// happens when the namespace registers, and again on every agent/session-start
+// with the session's workspace root (dsh-ssf-tab-data-fix: the harness never
+// fires a cordis `ready` event, and process-cwd-based root resolution picked an
+// unrelated directory). The session-projection route stays rejected:
+// session.append cannot carry `ignorable: true` (dsh-session only forwards
+// sourceEventSeqs/surfaceOp) and dsh-session-persistence's assertEventsSupported
+// refuses unknown event types, so no projections and no custom session events
+// are registered here.
 //
 // Settings schema note: schemastery (vendored as @deepseek-ai/schemastery,
 // v3.18.1) spells string-keyed arbitrary-value maps `z.dict(z.any())` (no
@@ -30,13 +34,16 @@ const SETTINGS_SCHEMA = z.object({
 });
 
 export function apply(ctx) {
-  const root = resolveWorkspaceRoot(ctx);
+  let root = process.cwd();
 
   // Conditional injection: the settings service may be absent; when present,
-  // the namespace scope lives for the plugin's lifetime.
+  // the namespace scope lives for the plugin's lifetime and the first snapshot
+  // is pushed right after registration (there is no `ready` lifecycle event in
+  // this harness — a dead `ctx.on('ready')` never fires).
   let scope = null;
   ctx.inject(['settings'], (s) => {
     scope = s.settings.register('ssf', SETTINGS_SCHEMA, {});
+    refresh();
   });
 
   // Re-scan the workspace and push a snapshot through the settings namespace.
@@ -53,24 +60,27 @@ export function apply(ctx) {
     refresh,
   });
 
-  // Six structured tools (stubs in 2.1; handlers in 2.2/2.3/2.4).
+  // Six structured tools (registered in lib/tools.js).
   registerTools(ctx, { resolveRoot: () => root });
 
-  // First snapshot on plugin ready.
-  ctx.on('ready', () => refresh());
+  // The session event carries the agent; resolve the session's workspace root
+  // and push a fresh snapshot for it (dsh-goal uses the same event).
+  ctx.on('agent/session-start', ({ agent }) => {
+    root = resolveWorkspaceRoot(ctx, agent?.session?.id);
+    refresh();
+  });
 }
 
 /**
- * Resolve the workspace root the scanner operates on. The plugin's apply has
- * no direct session id, so pick the first registered workspace that has any
- * live session; when the registry is absent, empty, or throws, fall back to
- * the process cwd. Never throws.
+ * Resolve the workspace root for one session: the first registered workspace
+ * whose sessionIds contains the session id. When the registry is absent,
+ * nothing matches, or it throws, fall back to the process cwd. Never throws.
  */
-function resolveWorkspaceRoot(ctx) {
+function resolveWorkspaceRoot(ctx, sessionId) {
   try {
     const workspaces = ctx.workspaceRegistry?.list?.() ?? [];
     const workspace = workspaces.find(
-      (entry) => Array.isArray(entry.sessionIds) && entry.sessionIds.length > 0,
+      (entry) => Array.isArray(entry.sessionIds) && entry.sessionIds.includes(sessionId),
     );
     if (workspace?.path) return workspace.path;
   } catch {

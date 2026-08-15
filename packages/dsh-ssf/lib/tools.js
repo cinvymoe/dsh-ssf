@@ -256,6 +256,10 @@ export function registerTools(ctx, { resolveRoot }) {
       const outcome = await handle.done;
       const stdout = handle.collected.stdout?.readFrom(0).text ?? '';
       const stderr = handle.collected.stderr?.readFrom(0).text ?? '';
+      // The CLI may have changed change state (state set / workflow select /
+      // sync ...) — refresh the settings-namespace snapshot so the GUI tab
+      // stays current; failures are best-effort and must not fail the tool.
+      await ctx.ssf?.refresh()?.catch(() => {});
       return { ok: true, stdout, stderr, exitCode: outcome.exitCode ?? -1 };
     },
   }));

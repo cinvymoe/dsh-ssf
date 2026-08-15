@@ -1,13 +1,14 @@
 // tests/lib/dsh-ssf-service.test.mjs
 // Tests for packages/dsh-ssf/lib/index.js — the host-side 'ssf' change-status
-// service (scan/summary/refresh) plus its 'ssf' settings-namespace push.
+// service (scan/summary/refresh), its 'ssf' settings-namespace push, and the
+// session-driven first push + workspace-root resolution (dsh-ssf-tab-data-fix).
 //
 // The fake ctx exercises the Service-provide and conditional settings-inject
 // contract without cordis: `inject(['settings'], fn)` runs the registration,
-// `provide(name, service)` records the service, `on` captures the ready
-// listener. The negative case proves the rejected session-projection/event
-// route (session.append cannot carry `ignorable: true`; the persistence read
-// path refuses unknown event types) was never taken.
+// `provide(name, service)` records the service, `on` captures lifecycle
+// listeners (agent/session-start drives the root + first push). The negative
+// cases prove the rejected session-projection/event route was never taken and
+// that no dead `ready` listener is registered.
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
@@ -36,6 +37,12 @@ function writeStateFile(dir, state) {
   writeFileSync(join(dir, '.spec-superflow.yaml'), lines.join('\n'));
 }
 
+function makeChange(root, name) {
+  const dir = join(root, 'changes', name);
+  mkdirSync(dir, { recursive: true });
+  writeStateFile(dir, { state: 'executing', workflow: 'full' });
+}
+
 after(() => {
   for (const root of createdRoots) rmSync(root, { recursive: true, force: true });
 });
@@ -46,8 +53,7 @@ after(() => {
  * pushed snapshots); `inject` calls the callback with this ctx so the
  * conditional settings registration always runs; `provide` records the
  * registered service; `on` captures lifecycle listeners; `sessionProjections`
- * and `session` carry spies so the negative test can prove the rejected route
- * was never touched.
+ * and `session` carry spies for the negative route test.
  */
 function makeFakeCtx({ workspaces } = {}) {
   const calls = {
@@ -103,6 +109,19 @@ function makeFakeCtx({ workspaces } = {}) {
   return { ctx, calls };
 }
 
+/** Invoke the captured agent/session-start listener and await its work. */
+async function startSession(ctx, calls, sessionId) {
+  const listener = calls.listeners.find((l) => l.event === 'agent/session-start');
+  assert.ok(listener, 'an agent/session-start listener must be registered');
+  await listener.cb({ agent: { session: { id: sessionId } } });
+}
+
+/** Flush microtasks so fire-and-forget refresh() calls from apply settle. */
+async function settle() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 describe('dsh-ssf service registration', () => {
   it('declares every ctx.<service> it reads in the cordis inject list', () => {
     // The real harness throws "cannot get property X without inject" for any
@@ -152,40 +171,78 @@ describe('dsh-ssf service registration', () => {
     assert.equal(calls.sessionProjectionRegisters, 0);
     assert.equal(calls.sessionAppends, 0);
   });
+
+  it('does not register a dead ready listener (harness never fires ready)', () => {
+    const root = makeWorkspace();
+    const { ctx, calls } = makeFakeCtx({ workspaces: [{ sessionIds: ['s1'], path: root }] });
+    plugin.apply(ctx);
+
+    assert.equal(calls.listeners.some((l) => l.event === 'ready'), false);
+  });
 });
 
 describe('dsh-ssf service behavior', () => {
-  it('refresh() re-scans the workspace and pushes { changes, scannedAt } via replace', async () => {
+  it('pushes an initial snapshot when the settings namespace registers', async () => {
     const root = makeWorkspace();
-    const alphaDir = join(root, 'changes', 'alpha');
-    mkdirSync(alphaDir, { recursive: true });
-    writeStateFile(alphaDir, { state: 'executing', workflow: 'full' });
     const { ctx, calls } = makeFakeCtx({ workspaces: [{ sessionIds: ['s1'], path: root }] });
     plugin.apply(ctx);
+    await settle();
+
+    assert.ok(calls.replaced.length >= 1, 'the registration callback must push an initial snapshot');
+    assert.equal(calls.replaced[0].ns, 'ssf');
+    assert.ok(Array.isArray(calls.replaced[0].section.changes));
+    assert.equal(typeof calls.replaced[0].section.scannedAt, 'number');
+  });
+
+  it('pushes again on agent/session-start with the session workspace root', async () => {
+    const rootA = makeWorkspace();
+    const rootB = makeWorkspace();
+    makeChange(rootB, 'beta');
+    const { ctx, calls } = makeFakeCtx({
+      workspaces: [
+        { sessionIds: ['s1'], path: rootA },
+        { sessionIds: ['s2'], path: rootB },
+      ],
+    });
+    plugin.apply(ctx);
+    await settle();
+    const before = calls.replaced.length;
+
+    await startSession(ctx, calls, 's2');
+
+    assert.ok(calls.replaced.length > before, 'session-start must push a fresh snapshot');
+    const last = calls.replaced[calls.replaced.length - 1].section;
+    assert.deepEqual(last.changes.map((c) => c.name), ['beta']);
+  });
+
+  it('refresh() re-scans the workspace and pushes { changes, scannedAt } via replace', async () => {
+    const root = makeWorkspace();
+    makeChange(root, 'alpha');
+    const { ctx, calls } = makeFakeCtx({ workspaces: [{ sessionIds: ['s1'], path: root }] });
+    plugin.apply(ctx);
+    await startSession(ctx, calls, 's1');
 
     const service = calls.provided['ssf'];
     const snapshot = await service.refresh();
 
     assert.ok(Array.isArray(snapshot.changes));
     assert.equal(typeof snapshot.scannedAt, 'number');
-    assert.equal(snapshot.changes.length, 1);
+    assert.deepEqual(snapshot.changes.map((c) => c.name), ['alpha']);
     const alpha = snapshot.changes[0];
-    assert.equal(alpha.name, 'alpha');
     assert.equal(alpha.state, 'executing');
     assert.equal(alpha.workflow, 'full');
 
-    assert.equal(calls.replaced.length, 1);
-    assert.equal(calls.replaced[0].ns, 'ssf');
-    assert.deepEqual(calls.replaced[0].section, snapshot);
+    const last = calls.replaced[calls.replaced.length - 1];
+    assert.equal(last.ns, 'ssf');
+    assert.deepEqual(last.section, snapshot);
   });
 
-  it('scan() and summary(changeDir) resolve against the workspace root', () => {
+  it('scan() and summary(changeDir) resolve against the session workspace root', async () => {
     const root = makeWorkspace();
-    const alphaDir = join(root, 'changes', 'alpha');
-    mkdirSync(alphaDir, { recursive: true });
-    writeStateFile(alphaDir, { state: 'executing', workflow: 'full' });
+    makeChange(root, 'alpha');
     const { ctx, calls } = makeFakeCtx({ workspaces: [{ sessionIds: ['s1'], path: root }] });
     plugin.apply(ctx);
+    await startSession(ctx, calls, 's1');
 
     const service = calls.provided['ssf'];
 
@@ -197,27 +254,13 @@ describe('dsh-ssf service behavior', () => {
     assert.equal(summary.state, 'executing');
     assert.equal(summary.workflow, 'full');
   });
-
-  it('pushes the first snapshot when the plugin becomes ready', async () => {
-    const root = makeWorkspace();
-    const { ctx, calls } = makeFakeCtx({ workspaces: [{ sessionIds: ['s1'], path: root }] });
-    plugin.apply(ctx);
-
-    const ready = calls.listeners.find((l) => l.event === 'ready');
-    assert.ok(ready, 'a ready listener must be registered');
-    await ready.cb();
-
-    assert.equal(calls.replaced.length, 1);
-    assert.equal(calls.replaced[0].ns, 'ssf');
-    assert.ok(Array.isArray(calls.replaced[0].section.changes));
-    assert.equal(typeof calls.replaced[0].section.scannedAt, 'number');
-  });
 });
 
 describe('dsh-ssf workspace root resolution', () => {
-  it('falls back to process.cwd() when no workspace has sessions', async () => {
+  it('falls back to process.cwd() when no workspace matches the session id', async () => {
     const { ctx, calls } = makeFakeCtx({ workspaces: [] });
     plugin.apply(ctx);
+    await startSession(ctx, calls, 's1');
 
     const snapshot = await calls.provided['ssf'].refresh();
 
@@ -230,6 +273,7 @@ describe('dsh-ssf workspace root resolution', () => {
     const { ctx, calls } = makeFakeCtx();
     delete ctx.workspaceRegistry;
     plugin.apply(ctx);
+    await startSession(ctx, calls, 's1');
 
     const snapshot = await calls.provided['ssf'].refresh();
 

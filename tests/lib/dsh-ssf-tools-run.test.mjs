@@ -108,6 +108,27 @@ describe('dsh-ssf ssf_run', () => {
     assert.equal(value.stderr, 'boom');
   });
 
+  it('refreshes the ssf service after execution', async () => {
+    let refreshCalls = 0;
+    const { ctx, registered } = makeRegistry();
+    ctx.ssf = { refresh: async () => { refreshCalls += 1; } };
+    const { registerTools } = await import('../../packages/dsh-ssf/lib/tools.js');
+    registerTools(ctx, { resolveRoot: () => tempRoot });
+    const value = await registered.ssf_run.execute({ arguments: ['list'] }, {});
+    assert.equal(value.exitCode, 0);
+    assert.equal(refreshCalls, 1, 'ssf_run must refresh the ssf service after execution');
+  });
+
+  it('does not propagate a refresh failure', async () => {
+    const { ctx, registered } = makeRegistry();
+    ctx.ssf = { refresh: async () => { throw new Error('refresh boom'); } };
+    const { registerTools } = await import('../../packages/dsh-ssf/lib/tools.js');
+    registerTools(ctx, { resolveRoot: () => tempRoot });
+    const value = await registered.ssf_run.execute({ arguments: ['list'] }, {});
+    assert.equal(value.exitCode, 0);
+    assert.equal(value.ok, true);
+  });
+
   it('throws on empty arguments, unknown subcommands, and traversal/absolute args', async () => {
     const { ctx, registered } = makeRegistry();
     const { registerTools } = await import('../../packages/dsh-ssf/lib/tools.js');
