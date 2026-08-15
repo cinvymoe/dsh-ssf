@@ -76,8 +76,11 @@ function makeFakeCtx({ workspaces } = {}) {
           get: () => undefined,
           watch: () => () => {},
           update: () => {},
-          replace: (ns2, section) => {
-            calls.replaced.push({ ns: ns2, section });
+          // Real contract: the owner-scope replace is already bound to the ns —
+          // it takes ONLY the section value (a second ns argument would make the
+          // harness reject with "must be a plain object"). Locked by this stub.
+          replace: (section) => {
+            calls.replaced.push({ ns: 'ssf', section });
           },
         };
       },

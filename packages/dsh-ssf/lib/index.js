@@ -43,14 +43,17 @@ export function apply(ctx) {
   let scope = null;
   ctx.inject(['settings'], (s) => {
     scope = s.settings.register('ssf', SETTINGS_SCHEMA, {});
-    refresh();
+    refresh().catch(() => {});
   });
 
   // Re-scan the workspace and push a snapshot through the settings namespace.
   // Returns the pushed snapshot (push is skipped when settings is absent).
+  // NOTE: the owner scope's replace/update are already bound to the namespace —
+  // call them with the section value only (passing the ns as the first arg
+  // makes the harness reject with "must be a plain object").
   async function refresh() {
     const snapshot = { changes: scanChanges(root), scannedAt: Date.now() };
-    if (scope) await scope.replace('ssf', snapshot);
+    if (scope) await scope.replace(snapshot);
     return snapshot;
   }
 
@@ -67,7 +70,7 @@ export function apply(ctx) {
   // and push a fresh snapshot for it (dsh-goal uses the same event).
   ctx.on('agent/session-start', ({ agent }) => {
     root = resolveWorkspaceRoot(ctx, agent?.session?.id);
-    refresh();
+    refresh().catch(() => {});
   });
 }
 
