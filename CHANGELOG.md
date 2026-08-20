@@ -14,6 +14,7 @@ The format loosely follows Keep a Changelog.
 
 ### Changed
 
+- **`ssf isolate` worktree 位置改为仓库内**：worktree 创建位置由仓库上一层兄弟目录（`<repoRoot>/../<repoName>-<name>`）改为仓库内 `changes/worktrees/<name>`；分支名与复用语义不变（路径已存在时直接复用并重新复制活动变更工件）。
 - **`ssf isolate` 纯 worktree 隔离模式**：隔离改为纯 worktree 模式，完全移除 `git switch -c` 分支回退与遗留隔离分支的 `git switch` 复用，worktree 是唯一隔离模式；worktree 创建失败（非"路径已存在"）且无 `--force` 时一律 exit 1（STOP）。`--force` 门不变，仍仅批准保护分支原地编辑；退出码约定不变（0=放行、1=STOP、2=用法错误）。
 - **build-executor preflight 措辞同步**：preflight 第 1 步描述由 "creates a git worktree (preferred) or a new branch" 改为 "creates a sibling git worktree（位于仓库旁；路径已存在时复用）when you are on `main`/`master` or pass `--isolate`"；`ssf isolate <change-dir> --isolate` 重跑与 STOP/`--force` 流程不变。
 - **build-executor / workflow-start 隔离语义同步**：`build-executor` preflight 增加"非保护分支时询问用户是否隔离，同意后带 `--isolate` 重跑"步骤；`workflow-start` prototype 路径改用 `--isolate` 创建隔离环境（仍不传 `--force`）。

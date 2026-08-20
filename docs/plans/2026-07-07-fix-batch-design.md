@@ -104,3 +104,20 @@
 4. **退出码约定不变**：0=放行（默认非保护分支、`--force` 批准）、1=失败（STOP，含 worktree 创建失败且无 `--force`）、2=用法错误。
 
 **同步**：`skills/build-executor/SKILL.md` preflight 第 1 步措辞改为 worktree 唯一模式（"creates a sibling git worktree（位于仓库旁；路径已存在时复用）when you are on `main`/`master` or pass `--isolate`"），`ssf isolate <change-dir> --isolate` 重跑与 STOP/`--force` 流程不变；`CHANGELOG.md` [Unreleased] 新增条目。
+
+---
+
+## 2026-08-20 补充：`ssf isolate` worktree 移入仓库内（isolate-worktree-in-repo）
+
+> 关联变更：`changes/isolate-worktree-in-repo` | 方案：仓库内 worktree | 基线：v1.0.0
+
+**背景**：上一补充（2026-08-07）的兄弟 worktree 位于仓库旁（`<repoRoot>/../<repoName>-<name>`），把 worktree 目录放在仓库之外，不利于便携/共享，也与插件"self-contained、零运行时依赖"的定位相悖。本变更将 worktree 创建位置改为仓库内 `changes/worktrees/` 下。波次 1 已修改 `scripts/ensure-branch.mjs`（含测试）；本补充为文档同步（技能措辞 + CHANGELOG + 设计文档）。
+
+**设计决策**：
+
+1. **仓库内 worktree 位置**：worktree 创建位置由 `<repoRoot>/../<repoName>-<name>` 改为仓库内 `<repoRoot>/changes/worktrees/<name>`（`<name>` 为变更名/分支名）。
+2. **分支名与复用语义保持**：worktree 分支名仍为变更名 `<name>`；`existsSync(worktreePath)` 为真时直接复用该路径并重新执行 `copyActiveChange` 复制活动变更工件；复用时不检查 worktree 是否属于本仓库（与分支复用一致的宽松语义）——均与上一补充一致，不得改动。
+3. **`--force` 与退出码约定不变**：`--force` 仍仅批准保护分支原地编辑；worktree 创建失败（非"路径已存在"）且无 `--force` 时一律 exit 1（STOP）。退出码约定不变：0=放行（默认非保护分支、`--force` 批准）、1=失败（STOP）、2=用法错误。
+4. **忽略规则**：本项目 `.gitignore` 第 35 行已忽略 `/changes/`，因此仓库内 worktree（`changes/worktrees/` 下）不会被纳入版本控制；测试 fixture 不依赖 ignore 规则（断言 worktree 存在与工件复制即可）。
+
+**同步范围**：`skills/build-executor/SKILL.md` preflight 第 1 步措辞由 "sibling git worktree（位于仓库旁；路径已存在时复用）" 改为 "in-repo git worktree（位于 `<change-dir>` 所在仓库的 `changes/worktrees/` 下；路径已存在时复用）"；`ssf isolate <change-dir> --isolate` 重跑与 STOP/`--force` 流程不变；`CHANGELOG.md` [Unreleased] 新增条目。上一补充（2026-08-07）保留作为历史记录。

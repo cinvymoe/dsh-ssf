@@ -26,9 +26,10 @@ Branch/worktree preflight before ANY implementation edit (mandatory — do not s
    ```bash
    ssf isolate <change-dir> <change-name>
    ```
-   This script enforces git isolation: it creates a sibling git worktree（位于
-   仓库旁；路径已存在时复用）when you are on `main`/`master` or pass `--isolate`,
-   and exits non-zero if it cannot and you have not approved `--force`. On a
+   This script enforces git isolation: it creates an in-repo git worktree（位于
+   `<change-dir>` 所在仓库的 `changes/worktrees/` 下；路径已存在时复用）when you are
+   on `main`/`master` or pass `--isolate`, and exits non-zero if it cannot and
+   you have not approved `--force`. On a
    non-protected branch it exits zero by default and prints a hint that you may
    re-run with `--isolate` to force an isolated environment.
 2. If `ssf isolate` exits non-zero: STOP. Do not edit `main`/`master` in place.
