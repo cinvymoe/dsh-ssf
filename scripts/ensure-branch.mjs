@@ -8,7 +8,7 @@
 // Non-protected branches are already isolated and pass by default, with a hint
 // that re-running with --isolate forces a sibling worktree.
 // With --isolate on a non-protected branch the same isolation path as a
-// protected branch is taken: a sibling worktree at <repoRoot>/../<repoName>-<name>
+// protected branch is taken: a sibling worktree at <repoRoot>/changes/worktrees/<name>
 // is created with the active change artifacts copied in. A worktree left over
 // from a previous run is reused (the active change artifacts are re-copied)
 // instead of failing. Worktrees are the only isolation mode — there is no
@@ -96,7 +96,7 @@ if (!isSafePathSegment(name)) {
   console.error('ensure-branch: change name must be a single safe path segment.');
   process.exit(1);
 }
-const worktreePath = join(dirname(repoRoot), `${repoName}-${name}`);
+const worktreePath = join(repoRoot, 'changes', 'worktrees', name);
 
 function copyActiveChange(worktreeRoot) {
   if (!existsSync(sourceChangeDir)) return;

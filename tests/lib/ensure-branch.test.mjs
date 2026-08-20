@@ -78,7 +78,7 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
     git(repoDir, 'checkout', '-q', 'main');
 
     const r = run([changeDir, 'planned-change']);
-    const worktree = join(dirname(repoDir), `${basename(repoDir)}-planned-change`);
+    const worktree = join(repoDir, 'changes', 'worktrees', 'planned-change');
 
     try {
       assert.equal(r.ok, true, r.out);
@@ -107,7 +107,7 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
     git(repoDir, 'checkout', '-q', 'feature/work');
 
     const r = run([changeDir, 'iso-change', '--isolate']);
-    const worktree = join(dirname(repoDir), `${basename(repoDir)}-iso-change`);
+    const worktree = join(repoDir, 'changes', 'worktrees', 'iso-change');
 
     try {
       assert.equal(r.ok, true, r.out);
@@ -124,8 +124,9 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
     mkdirSync(changeDir, { recursive: true });
     writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
     git(repoDir, 'checkout', '-q', 'feature/work');
-    // Pre-create the sibling worktree as if a previous run left it behind.
-    const worktree = join(dirname(repoDir), `${basename(repoDir)}-iso-existing`);
+    // Pre-create the worktree as if a previous run left it behind.
+    const worktree = join(repoDir, 'changes', 'worktrees', 'iso-existing');
+    mkdirSync(join(repoDir, 'changes', 'worktrees'), { recursive: true });
     git(repoDir, 'worktree', 'add', '-q', worktree, '-b', 'iso-existing');
 
     try {
@@ -148,7 +149,7 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
 
     const repoName = basename(repoDir);
     const r = run([changeDir, '--isolate']);
-    const worktree = join(dirname(repoDir), `${repoName}-${repoName}`);
+    const worktree = join(repoDir, 'changes', 'worktrees', repoName);
 
     try {
       assert.equal(r.ok, true, r.out);
