@@ -9,14 +9,14 @@ The format loosely follows Keep a Changelog.
 ### Added
 
 - **DSH 插件（dsh-ssf）**：新增 `packages/dsh-ssf/` 单包双半插件——host 半注册 7 个 `ssf_*` 原生工具（`ssf_list`/`ssf_state`/`ssf_workflow`/`ssf_execution`/`ssf_validate`/`ssf_guard`/`ssf_run`）与变更状态服务（`ssf` settings 命名空间推送 `{ changes, scannedAt }` 快照），client 半提供设置页"Spec 工作流"tab；9 个工作流技能改为"优先调用 `ssf_*` 原生工具、CLI 回退"；`ssf` CLI 行为不变（仅新增行为中性的 `SSF_COMMANDS` 导出）。
-- **`ssf isolate` 兄弟 worktree 复用**：兄弟 worktree 路径（仓库旁 `<repo>-<name>`）已存在时直接复用并重新复制活动变更工件；复用路径与创建路径共享 `copyActiveChange`，复用时不检查 worktree 是否属于本仓库（与分支复用一致的宽松语义）。
-- **`ssf isolate` 非保护分支隔离选择（`--isolate`）**：非保护分支（非 `main`/`master`）默认以退出码 0 放行，并追加提示 `To create an isolated context, re-run with --isolate.`；带 `--isolate` 重跑则在任意分支上显式创建隔离环境，语义与保护分支强制隔离一致（通过兄弟 worktree，见下方"纯 worktree 隔离模式"条目）。保护分支强制隔离语义不变，`--force` 仍仅用于批准保护分支原地编辑。
+- **`ssf isolate` 仓库内 worktree 复用**：仓库内 worktree 路径（`changes/worktrees/<name>`）已存在时直接复用并重新复制活动变更工件；复用路径与创建路径共享 `copyActiveChange`，复用时不检查 worktree 是否属于本仓库（与分支复用一致的宽松语义）。
+- **`ssf isolate` 非保护分支隔离选择（`--isolate`）**：非保护分支（非 `main`/`master`）默认以退出码 0 放行，并追加提示 `To create an isolated context, re-run with --isolate.`；带 `--isolate` 重跑则在任意分支上显式创建隔离环境，语义与保护分支强制隔离一致（通过仓库内 worktree，见下方"纯 worktree 隔离模式"条目）。保护分支强制隔离语义不变，`--force` 仍仅用于批准保护分支原地编辑。
 
 ### Changed
 
 - **`ssf isolate` worktree 位置改为仓库内**：worktree 创建位置由仓库上一层兄弟目录（`<repoRoot>/../<repoName>-<name>`）改为仓库内 `changes/worktrees/<name>`；分支名与复用语义不变（路径已存在时直接复用并重新复制活动变更工件）。
 - **`ssf isolate` 纯 worktree 隔离模式**：隔离改为纯 worktree 模式，完全移除 `git switch -c` 分支回退与遗留隔离分支的 `git switch` 复用，worktree 是唯一隔离模式；worktree 创建失败（非"路径已存在"）且无 `--force` 时一律 exit 1（STOP）。`--force` 门不变，仍仅批准保护分支原地编辑；退出码约定不变（0=放行、1=STOP、2=用法错误）。
-- **build-executor preflight 措辞同步**：preflight 第 1 步描述由 "creates a git worktree (preferred) or a new branch" 改为 "creates a sibling git worktree（位于仓库旁；路径已存在时复用）when you are on `main`/`master` or pass `--isolate`"；`ssf isolate <change-dir> --isolate` 重跑与 STOP/`--force` 流程不变。
+- **build-executor preflight 措辞同步**：preflight 第 1 步描述由 "creates a git worktree (preferred) or a new branch" 改为 "creates an in-repo git worktree（位于 `<change-dir>` 所在仓库的 `changes/worktrees/` 下；路径已存在时复用）when you are on `main`/`master` or pass `--isolate`"；`ssf isolate <change-dir> --isolate` 重跑与 STOP/`--force` 流程不变。
 - **build-executor / workflow-start 隔离语义同步**：`build-executor` preflight 增加"非保护分支时询问用户是否隔离，同意后带 `--isolate` 重跑"步骤；`workflow-start` prototype 路径改用 `--isolate` 创建隔离环境（仍不传 `--force`）。
 
 ## [1.0.0] - 2026-08-03

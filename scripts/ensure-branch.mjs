@@ -6,16 +6,16 @@
 //
 // Protected branches (main/master) always require an isolated context.
 // Non-protected branches are already isolated and pass by default, with a hint
-// that re-running with --isolate forces a sibling worktree.
+// that re-running with --isolate forces an in-repo worktree.
 // With --isolate on a non-protected branch the same isolation path as a
-// protected branch is taken: a sibling worktree at <repoRoot>/changes/worktrees/<name>
+// protected branch is taken: an in-repo worktree at <repoRoot>/changes/worktrees/<name>
 // is created with the active change artifacts copied in. A worktree left over
 // from a previous run is reused (the active change artifacts are re-copied)
 // instead of failing. Worktrees are the only isolation mode — there is no
 // branch fallback.
 //
 // Usage: node ensure-branch.mjs <change-dir> [change-name] [--isolate] [--force]
-//   --isolate  create an isolated environment on any branch via a sibling
+//   --isolate  create an isolated environment on any branch via an in-repo
 //              worktree (default: pass through on non-protected branches)
 //
 // Security: every git invocation uses execFileSync with a LITERAL command
@@ -109,7 +109,7 @@ function copyActiveChange(worktreeRoot) {
   });
 }
 
-// Isolation via a sibling worktree (literal arg array) — the only isolation
+// Isolation via an in-repo worktree (literal arg array) — the only isolation
 // mode. A worktree left over from a previous run is reused by re-copying the
 // active change artifacts.
 if (existsSync(worktreePath)) {

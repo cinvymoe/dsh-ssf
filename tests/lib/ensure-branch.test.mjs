@@ -2,7 +2,7 @@
 // Regression for #15: git isolation must be enforceable, not just advised.
 // `ensure-branch.mjs` must refuse to proceed on a protected branch when it cannot
 // isolate, must allow work on a non-protected branch (with a hint), and must honor
-// `--isolate` on non-protected branches by creating (or reusing) a sibling
+// `--isolate` on non-protected branches by creating (or reusing) an in-repo
 // worktree instead of silently passing. Worktrees are the only isolation mode:
 // a worktree left over from a previous run is reused by re-copying the active
 // change artifacts.
@@ -71,7 +71,7 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
     assert.match(r.out, /--isolate/, `output should hint at --isolate, got: ${r.out}`);
   });
 
-  it('SHALL create a sibling worktree and carry only the active change artifacts from main', () => {
+  it('SHALL create an in-repo worktree and carry only the active change artifacts from main', () => {
     const changeDir = join(repoDir, 'changes', 'planned-change');
     mkdirSync(changeDir, { recursive: true });
     writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
@@ -100,7 +100,7 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
     assert.match(r.out, /single safe path segment/i);
   });
 
-  it('SHALL create a sibling worktree with --isolate on a non-protected branch, carrying only active change artifacts, without switching the current branch', () => {
+  it('SHALL create an in-repo worktree with --isolate on a non-protected branch, carrying only active change artifacts, without switching the current branch', () => {
     const changeDir = join(repoDir, 'changes', 'iso-change');
     mkdirSync(changeDir, { recursive: true });
     writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
@@ -119,7 +119,7 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
     }
   });
 
-  it('SHALL reuse an existing sibling worktree with exit 0 when --isolate is given and the worktree already exists', () => {
+  it('SHALL reuse an existing in-repo worktree with exit 0 when --isolate is given and the worktree already exists', () => {
     const changeDir = join(repoDir, 'changes', 'iso-existing');
     mkdirSync(changeDir, { recursive: true });
     writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
@@ -141,7 +141,7 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
     }
   });
 
-  it('SHALL create a sibling worktree with --isolate and no change-name on a non-protected branch, defaulting the name to the repo name', () => {
+  it('SHALL create an in-repo worktree with --isolate and no change-name on a non-protected branch, defaulting the name to the repo name', () => {
     const changeDir = join(repoDir, 'changes', 'no-name-change');
     mkdirSync(changeDir, { recursive: true });
     writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
