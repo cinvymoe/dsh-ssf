@@ -249,3 +249,60 @@ describe('state-loader: updateField()', () => {
     assert.equal(state.workflow, 'full');
   });
 });
+
+describe('state-loader: worktree field', () => {
+  let stateLoader;
+
+  before(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'ssf-state-worktree-'));
+    const modulePath = join(process.cwd(), 'scripts/lib/state-loader.mjs');
+    stateLoader = await import(modulePath);
+  });
+
+  after(() => {
+    if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('round-trips worktree field through write then read', () => {
+    const worktreePath = 'changes/worktrees/my-change';
+    stateLoader.writeState(tempDir, {
+      state: 'executing',
+      change_name: 'my-change',
+      worktree: worktreePath,
+      last_transition: '2026-07-01T10:00:00Z',
+    });
+    const state = stateLoader.readState(tempDir);
+    assert.equal(state.worktree, worktreePath);
+    const content = readFileSync(join(tempDir, '.spec-superflow.yaml'), 'utf-8');
+    assert.ok(content.includes(`worktree: ${worktreePath}`));
+    // ensure worktree line is after last_transition_to
+    const idxWorktree = content.indexOf('worktree:');
+    const idxLastTo = content.indexOf('last_transition_to:');
+    assert.ok(idxWorktree > idxLastTo, 'worktree should be after last_transition_to in Metadata section');
+  });
+
+  it('reads legacy file without worktree field as worktree: null', () => {
+    const legacyYaml = [
+      'state: executing',
+      'workflow: full',
+      'change_name: legacy-change',
+      'last_transition: 2026-07-01T10:00:00Z',
+      'last_transition_to: executing',
+    ].join('\n');
+    writeFileSync(join(tempDir, '.spec-superflow.yaml'), legacyYaml);
+    const state = stateLoader.readState(tempDir);
+    assert.equal(state.worktree, null);
+  });
+
+  it('writes worktree null as "worktree: null"', () => {
+    stateLoader.writeState(tempDir, {
+      state: 'exploring',
+      change_name: 'null-change',
+      worktree: null,
+    });
+    const content = readFileSync(join(tempDir, '.spec-superflow.yaml'), 'utf-8');
+    assert.ok(content.includes('worktree: null'));
+    const state = stateLoader.readState(tempDir);
+    assert.equal(state.worktree, null);
+  });
+});
