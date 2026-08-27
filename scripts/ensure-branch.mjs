@@ -126,8 +126,8 @@ if (existsSync(worktreePath)) {
     process.exit(1);
   }
   // diverged but worktreeNewer=false and freshnessKnown=true (worktree older) -> allow overwrite
-  copyActiveChange(worktreePath);
   recordWorktree(sourceChangeDir, repoRoot, worktreePath);
+  copyActiveChange(worktreePath);
   if (sync) console.log(`ensure-branch: --sync forced source -> worktree copy at ${worktreePath}.`);
   console.log(`ensure-branch: reused existing git worktree at ${worktreePath}. Make implementation edits there.`);
   process.exit(0);
@@ -135,8 +135,8 @@ if (existsSync(worktreePath)) {
 
 try {
   execFileSync('git', ['worktree', 'add', worktreePath, '-b', name], { ...GIT_OPTS, stdio: 'inherit' });
-  copyActiveChange(worktreePath);
   recordWorktree(sourceChangeDir, repoRoot, worktreePath);
+  copyActiveChange(worktreePath);
   console.log(`ensure-branch: created git worktree at ${worktreePath} on branch '${name}' with active change artifacts. Make all implementation edits there.`);
   process.exit(0);
 } catch (e) {

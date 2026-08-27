@@ -216,6 +216,29 @@ describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
     }
   });
 
+  it('SHALL propagate worktree pointer into worktree copy after creation', () => {
+    const repo = makeRepo();
+    try {
+      const changeDir = join(repo, 'changes', 'propagate-create');
+      mkdirSync(changeDir, { recursive: true });
+      writeFileSync(join(changeDir, 'proposal.md'), 'hello');
+      writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
+
+      const r = run([changeDir, 'propagate-create']);
+      const worktree = join(repo, 'changes', 'worktrees', 'propagate-create');
+      assert.equal(r.ok, true, `creation should succeed, got: ${r.out}`);
+      const srcField = readWorktreeField(changeDir);
+      assert.equal(srcField, 'changes/worktrees/propagate-create');
+      // worktree copy must also carry the pointer so T3 inside-worktree warning is reachable
+      const wtChangeDir = join(worktree, 'changes', 'propagate-create');
+      const wtField = readWorktreeField(wtChangeDir);
+      assert.equal(wtField, 'changes/worktrees/propagate-create', `worktree copy should carry pointer, got: ${wtField}`);
+      if (existsSync(worktree)) git(repo, 'worktree', 'remove', '--force', worktree);
+    } finally {
+      if (existsSync(repo)) rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
   it('SHALL NOT record worktree pointer for prototype- names', () => {
     const repo = makeRepo();
     try {
@@ -399,6 +422,34 @@ describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
       assert.equal(r.ok, true, r.out);
       const field = readWorktreeField(changeDir);
       assert.equal(field, 'changes/worktrees/reuse-pointer');
+      if (existsSync(worktree)) git(repo, 'worktree', 'remove', '--force', worktree);
+    } finally {
+      if (existsSync(repo)) rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it('SHALL propagate worktree pointer into worktree copy after reuse', () => {
+    const repo = makeRepo();
+    try {
+      const changeDir = join(repo, 'changes', 'propagate-reuse');
+      mkdirSync(changeDir, { recursive: true });
+      writeFileSync(join(changeDir, 'proposal.md'), 'source-v1');
+      writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
+
+      let r = run([changeDir, 'propagate-reuse']);
+      assert.equal(r.ok, true, `initial creation failed: ${r.out}`);
+      const worktree = join(repo, 'changes', 'worktrees', 'propagate-reuse');
+      const wtChangeDir = join(worktree, 'changes', 'propagate-reuse');
+      // tamper source pointer to null, ensure worktree copy also loses it via manual clear
+      writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
+      writeStateYaml(wtChangeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
+      // reuse should re-propagate pointer to both
+      r = run([changeDir, 'propagate-reuse']);
+      assert.equal(r.ok, true, `reuse should succeed, got: ${r.out}`);
+      const srcField = readWorktreeField(changeDir);
+      assert.equal(srcField, 'changes/worktrees/propagate-reuse');
+      const wtField = readWorktreeField(wtChangeDir);
+      assert.equal(wtField, 'changes/worktrees/propagate-reuse', `worktree copy should carry pointer after reuse, got: ${wtField}`);
       if (existsSync(worktree)) git(repo, 'worktree', 'remove', '--force', worktree);
     } finally {
       if (existsSync(repo)) rmSync(repo, { recursive: true, force: true });

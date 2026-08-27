@@ -128,6 +128,23 @@ describe('worktree-authority: divergence', () => {
     assert.ok(res.worktreePath.includes('changes/worktrees/div-equal'));
   });
 
+  it('diverged when both last_transition equal but artifact hash differs (equal-ts hash fallback)', () => {
+    const changeDir = join(tmpRoot, 'changes', 'div-equal-hash-diff');
+    mkdirSync(changeDir, { recursive: true });
+    const ts = '2026-07-01T10:00:00Z';
+    // differing artifact content: proposal.md differs between copies
+    writeFileSync(join(changeDir, 'proposal.md'), 'source proposal v1');
+    stateLoader.writeState(changeDir, { state: 'executing', change_name: 'div-equal-hash-diff', worktree: 'changes/worktrees/div-equal-hash-diff', last_transition: ts });
+    const worktreeChangeDir = join(tmpRoot, 'changes', 'worktrees', 'div-equal-hash-diff', 'changes', 'div-equal-hash-diff');
+    mkdirSync(worktreeChangeDir, { recursive: true });
+    writeFileSync(join(worktreeChangeDir, 'proposal.md'), 'worktree proposal v2 DIFFERS');
+    stateLoader.writeState(worktreeChangeDir, { state: 'executing', change_name: 'div-equal-hash-diff', worktree: 'changes/worktrees/div-equal-hash-diff', last_transition: ts });
+    const res = mod.divergence(changeDir);
+    assert.equal(res.diverged, true, 'equal ts but differing hash must be diverged');
+    assert.equal(res.freshnessKnown, true, 'freshness stays known when both state files exist');
+    assert.equal(res.worktreeNewer, false, 'worktreeNewer false when ts equal');
+  });
+
   it('diverged+worktreeNewer when worktree last_transition is later', () => {
     const changeDir = join(tmpRoot, 'changes', 'div-newer');
     mkdirSync(changeDir, { recursive: true });

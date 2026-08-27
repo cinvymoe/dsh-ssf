@@ -55,6 +55,9 @@ export function divergence(changeDir) {
     if (wtTs !== srcTs) {
       result.diverged = true;
       result.worktreeNewer = wtTs > srcTs; // ISO 时间戳字典序即时间序
+    } else if (computeArtifactsHash(changeDir) !== computeArtifactsHash(worktreeChangeDir)) {
+      // equal ts but artifact content differs → diverged (freshnessKnown stays true, worktreeNewer false)
+      result.diverged = true;
     }
     return result;
   }
