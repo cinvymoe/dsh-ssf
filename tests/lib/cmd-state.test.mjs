@@ -594,6 +594,11 @@ describe('cmd-state: worktree terminal cleanup (T3)', () => {
       assert.equal(result.exitCode, 0, `inside transition should succeed, got ${result.exitCode}: ${result.stderr}`);
       assert.match(result.stderr, /skipping automatic worktree removal/i);
       assert.match(result.stderr, /inside the worktree copy/i);
+      // path assertion: warning must name the correct absolute worktree path (not nested)
+      const worktreePathInWarning = result.stderr.match(/git worktree remove --force (\S+)/)?.[1];
+      assert.equal(worktreePathInWarning, worktreeAbs, `warning should contain correct absolute worktree path ${worktreeAbs}, got ${worktreePathInWarning}`);
+      const nestedWrong = join(worktreeAbs, `changes/worktrees/${changeName}`);
+      assert.ok(!result.stderr.includes(nestedWrong), `warning should not contain nested incorrect path ${nestedWrong}`);
       // worktree dir should still exist (not removed to avoid stranding cwd)
       assert.equal(existsSync(worktreeAbs), true);
       // worktree copy state should be closing

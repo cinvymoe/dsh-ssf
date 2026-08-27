@@ -193,7 +193,7 @@ export async function run(args) {
 
       // T3: automatic worktree cleanup after successful transition
       if ((toState === 'closing' || toState === 'abandoned') && state.worktree) {
-        const worktreeAbs = join(repoRootFor(changeDir), state.worktree);
+        let worktreeAbs = join(repoRootFor(changeDir), state.worktree);
         let insideWorktree = false;
         try {
           const realChange = realpathSync(resolve(changeDir));
@@ -205,6 +205,7 @@ export async function run(args) {
             const gitCommon = execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd: changeDir, encoding: 'utf-8' }).trim();
             const mainRoot = realpathSync(resolve(changeDir, gitCommon, '..'));
             const altWorktreeAbs = join(mainRoot, state.worktree);
+            worktreeAbs = altWorktreeAbs;
             const realChange2 = realpathSync(resolve(changeDir));
             const realAlt = realpathSync(altWorktreeAbs);
             insideWorktree = realChange2.startsWith(realAlt + sep);
@@ -215,13 +216,30 @@ export async function run(args) {
         if (insideWorktree) {
           console.error(`warning: transition run from inside the worktree copy; skipping automatic worktree removal. Re-run cleanup from the main checkout: git worktree remove --force ${worktreeAbs}`);
         } else {
-          try {
-            const repoRoot = repoRootFor(changeDir);
-            execFileSync('git', ['worktree', 'remove', '--force', worktreeAbs], { cwd: repoRoot, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
-            state.worktree = null;
-            writeState(changeDir, state);
-          } catch (e) {
-            console.error(`warning: automatic worktree removal failed: ${(e.stderr || e.message || '').toString().trim()}. Remove manually: git worktree remove --force ${worktreeAbs}`);
+          if (!existsSync(worktreeAbs)) {
+            try {
+              state.worktree = null;
+              writeState(changeDir, state);
+            } catch (e) {
+              console.error(`warning: failed to clear stale worktree pointer: ${(e.message || '').toString().trim()}`);
+            }
+          } else {
+            let removalSucceeded = false;
+            try {
+              const repoRoot = repoRootFor(changeDir);
+              execFileSync('git', ['worktree', 'remove', '--force', worktreeAbs], { cwd: repoRoot, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
+              removalSucceeded = true;
+            } catch (e) {
+              console.error(`warning: automatic worktree removal failed: ${(e.stderr || e.message || '').toString().trim()}. Remove manually: git worktree remove --force ${worktreeAbs}`);
+            }
+            if (removalSucceeded) {
+              try {
+                state.worktree = null;
+                writeState(changeDir, state);
+              } catch (e) {
+                console.error(`warning: failed to clear worktree pointer after removal: ${(e.message || '').toString().trim()}`);
+              }
+            }
           }
         }
       }
