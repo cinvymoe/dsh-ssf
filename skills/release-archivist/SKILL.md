@@ -175,7 +175,7 @@ run `ssf state transition <change-dir> closing`.
 `executing → closing` is the final action: once it succeeds, select no next
 skill and run no recovery scans.
 
-`ssf state transition <change-dir> closing`（`abandoned` 同理）若存在 `worktree` 指针：先做分叉前置检查——分叉则以退出码 1 拒绝并提示先将 worktree 副本工件同步回主检出；通过后持久化状态，再自动执行 `git worktree remove --force <worktree>` 并将 `worktree` 字段置 `null`。清理失败仅打印警告与手动清理命令（`git worktree remove --force <path>`），不回滚已持久化的状态（exit 0, warn-only）；若转换命令从 worktree 副本内部发起，则跳过自动清理并警告提示回主检出执行 `git worktree remove --force <worktree>`。隔离分支在 `remove` 后仍保留，由用户按需手动删除（`git branch -d <name>`）。`ssf state transition` 与 `ssf execution review` 的副本分叉警告为 warn-only（仅 stderr，不改退出码）。
+终态转换（`closing`/`abandoned`，即上方命令）若存在 `worktree` 指针：先做分叉前置检查——分叉则以退出码 1 拒绝并提示先将 worktree 副本工件同步回主检出；通过后持久化状态，再自动执行 `git worktree remove --force <worktree>` 并将 `worktree` 字段置 `null`。清理失败仅打印警告与手动清理命令（`git worktree remove --force <path>`），不回滚已持久化的状态（exit 0, warn-only）；若转换命令从 worktree 副本内部发起，则跳过自动清理并警告提示回主检出执行 `git worktree remove --force <worktree>`。隔离分支在 `remove` 后仍保留，由用户按需手动删除（`git branch -d <name>`）。`ssf state transition` 与 `ssf execution review` 的副本分叉警告为 warn-only（仅 stderr，不改退出码）。
 
 ## Lightweight Closure (Quick/direct Hotfix/tweak)
 
