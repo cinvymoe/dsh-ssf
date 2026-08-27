@@ -1,11 +1,12 @@
 // scripts/lib/cmd-state.mjs — ssf state subcommand handler
 import { parseArgs } from 'node:util';
-import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { spawnSync, execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, realpathSync } from 'node:fs';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readState, writeState, updateField, rebuildState } from './state-loader.mjs';
 import { computeArtifactsHash, computeContractHash } from './hash.mjs';
+import { divergence, warnIfDiverged, repoRootFor } from './worktree-authority.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -122,6 +123,18 @@ export async function run(args) {
       const state = readState(changeDir);
       const fromState = state.state;
 
+      // T3: warn-only divergence warning at top of transition (after reading state)
+      warnIfDiverged(changeDir);
+
+      // T3: divergence pre-check BEFORE guard for terminal transitions
+      if ((toState === 'closing' || toState === 'abandoned') && state.worktree) {
+        const d = divergence(changeDir);
+        if (d.diverged) {
+          console.error(`Refusing ${fromState} -> ${toState}: worktree copy at ${d.worktreePath} diverged from this change directory. Sync its artifacts back first, then retry.`);
+          process.exit(1);
+        }
+      }
+
       // Run guard before allowing transition (H-2: enforce guard)
       const guardScript = join(__dirname, '..', 'guard', 'guard.mjs');
       // The guard runs from the bundled plugin directory. Resolve a relative
@@ -177,6 +190,41 @@ export async function run(args) {
       state.last_transition_to = toState;
       state.last_transition = new Date().toISOString();
       writeState(changeDir, state);
+
+      // T3: automatic worktree cleanup after successful transition
+      if ((toState === 'closing' || toState === 'abandoned') && state.worktree) {
+        const worktreeAbs = join(repoRootFor(changeDir), state.worktree);
+        let insideWorktree = false;
+        try {
+          const realChange = realpathSync(resolve(changeDir));
+          const realWorktree = realpathSync(worktreeAbs);
+          insideWorktree = realChange.startsWith(realWorktree + sep);
+        } catch {
+          // Fallback for inside-worktree case where worktreeAbs may be computed from wrong repo root
+          try {
+            const gitCommon = execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd: changeDir, encoding: 'utf-8' }).trim();
+            const mainRoot = realpathSync(resolve(changeDir, gitCommon, '..'));
+            const altWorktreeAbs = join(mainRoot, state.worktree);
+            const realChange2 = realpathSync(resolve(changeDir));
+            const realAlt = realpathSync(altWorktreeAbs);
+            insideWorktree = realChange2.startsWith(realAlt + sep);
+          } catch {
+            insideWorktree = false;
+          }
+        }
+        if (insideWorktree) {
+          console.error(`warning: transition run from inside the worktree copy; skipping automatic worktree removal. Re-run cleanup from the main checkout: git worktree remove --force ${worktreeAbs}`);
+        } else {
+          try {
+            const repoRoot = repoRootFor(changeDir);
+            execFileSync('git', ['worktree', 'remove', '--force', worktreeAbs], { cwd: repoRoot, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
+            state.worktree = null;
+            writeState(changeDir, state);
+          } catch (e) {
+            console.error(`warning: automatic worktree removal failed: ${(e.stderr || e.message || '').toString().trim()}. Remove manually: git worktree remove --force ${worktreeAbs}`);
+          }
+        }
+      }
 
       // Auto-inject phase-guard after successful transition (H-3: keep phase-guard in sync)
       // Spawn as a subprocess: cmd-inject calls process.exit(2) when no platform

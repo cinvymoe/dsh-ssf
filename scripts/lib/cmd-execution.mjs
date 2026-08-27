@@ -6,6 +6,7 @@ import {
   writeRecommendationReceipt,
 } from './execution-recommendation.mjs';
 import { readState, writeState } from './state-loader.mjs';
+import { warnIfDiverged } from './worktree-authority.mjs';
 
 const SUBCOMMANDS = ['recommend', 'plan', 'show', 'revise', 'review'];
 
@@ -130,6 +131,8 @@ function showPlan(changeDir, json, io) {
 }
 
 function recordAndPrintReview(changeDir, values, io) {
+  // T3: warn-only divergence warning at top of review subcommand
+  warnIfDiverged(changeDir);
   requireOption(values.wave?.[0], '--wave');
   if (values.wave.length !== 1) throw new Error('Review requires exactly one --wave value');
   requireOption(values.base, '--base');

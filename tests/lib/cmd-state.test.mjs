@@ -2,24 +2,26 @@
 // Tests for scripts/lib/cmd-state.mjs
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, chmodSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, chmodSync, cpSync, readFileSync, realpathSync } from 'node:fs';
+import { join, resolve, relative, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync, spawnSync } from 'node:child_process';
+import { readState, writeState } from '../../scripts/lib/state-loader.mjs';
 
 const CLI_PATH = join(process.cwd(), 'scripts/spec-superflow.mjs');
 let tempDir;
 
 function ssf(args, options = {}) {
-  try {
-    const result = execSync(
-      `${shellQuote(process.execPath)} ${shellQuote(CLI_PATH)} ${args}`,
-      { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], ...options }
-    );
-    return { exitCode: 0, stdout: result.trim(), stderr: '' };
-  } catch (err) {
-    return { exitCode: err.status || 1, stdout: err.stdout?.trim() || '', stderr: err.stderr?.trim() || err.message };
-  }
+  const result = spawnSync(`${shellQuote(process.execPath)} ${shellQuote(CLI_PATH)} ${args}`, {
+    shell: true,
+    encoding: 'utf-8',
+    ...options,
+  });
+  return {
+    exitCode: result.status ?? 1,
+    stdout: result.stdout?.trim() ?? '',
+    stderr: result.stderr?.trim() ?? '',
+  };
 }
 
 function shellQuote(value) {
@@ -435,5 +437,190 @@ describe('cmd-state: error handling', () => {
   it('errors on unknown subcommand', () => {
     const result = ssf('state invalid-subcommand /tmp');
     assert.equal(result.exitCode, 2);
+  });
+});
+
+// T3: terminal worktree cleanup and divergence pre-check
+describe('cmd-state: worktree terminal cleanup (T3)', () => {
+  function git(cwd, ...args) {
+    execFileSync('git', args, { cwd, stdio: 'pipe', timeout: 10000 });
+  }
+
+  function createRepo() {
+    const repo = mkdtempSync(join(tmpdir(), 'ssf-t3-repo-'));
+    git(repo, 'init', '-q', '--initial-branch=main');
+    git(repo, 'config', 'user.name', 'test');
+    git(repo, 'config', 'user.email', 't@t');
+    writeFileSync(join(repo, 'README.md'), 'x');
+    git(repo, 'add', '-A');
+    git(repo, 'commit', '-q', '-m', 'init');
+    return repo;
+  }
+
+  function writeArtifacts(changeDir) {
+    writeFileSync(join(changeDir, 'proposal.md'), '## Why\nTest proposal for T3 closing with sufficient length to pass validation.\n## What Changes\n- Test');
+    writeFileSync(join(changeDir, 'design.md'), '# Design\n## Context\nTest.\n## Goals\nTest.\n## Decisions\n### D1\n- Choice: Test\n- Rationale: Test\n\n## Risks And Trade-Offs\nNone.');
+    writeFileSync(join(changeDir, 'tasks.md'), '# Tasks\n- [x] Task 1');
+    mkdirSync(join(changeDir, 'specs', 'test'), { recursive: true });
+    writeFileSync(join(changeDir, 'specs', 'test', 'spec.md'), '## ADDED Requirements\n### Requirement: Test\nSHALL work.\n#### Scenario: Test\n- **WHEN** test\n- **THEN** test');
+    writeFileSync(join(changeDir, 'execution-contract.md'), '# Execution Contract\n');
+  }
+
+  function initChangeAsExecuting(repo, changeName) {
+    const changeDir = join(repo, 'changes', changeName);
+    mkdirSync(changeDir, { recursive: true });
+    writeArtifacts(changeDir);
+    const init = ssf(`state init ${changeDir}`);
+    assert.equal(init.exitCode, 0, `state init failed: ${init.stderr}`);
+    // Set to executing, tweak, pass so closing guard passes via direct-test-result
+    const s = readState(changeDir);
+    s.state = 'executing';
+    s.workflow = 'tweak';
+    s.test_result = 'pass';
+    s.last_transition = '2026-01-01T00:00:00.000Z';
+    writeState(changeDir, s);
+    return changeDir;
+  }
+
+  function createWorktreeAndSync(repo, changeName) {
+    const changeDir = join(repo, 'changes', changeName);
+    const worktreeAbs = join(repo, 'changes', 'worktrees', changeName);
+    mkdirSync(join(repo, 'changes', 'worktrees'), { recursive: true });
+    git(repo, 'worktree', 'add', '-q', worktreeAbs, '-b', changeName);
+    const worktreeChangeDir = join(worktreeAbs, 'changes', changeName);
+    // ensure copy
+    if (existsSync(worktreeChangeDir)) rmSync(worktreeChangeDir, { recursive: true, force: true });
+    mkdirSync(join(worktreeAbs, 'changes'), { recursive: true });
+    cpSync(changeDir, worktreeChangeDir, { recursive: true, force: true });
+    // after copy, set worktree pointer on main copy
+    const mainState = readState(changeDir);
+    mainState.worktree = `changes/worktrees/${changeName}`;
+    writeState(changeDir, mainState);
+    // ensure worktree copy also has same pointer and timestamp for consistency
+    const wtState = readState(worktreeChangeDir);
+    wtState.worktree = `changes/worktrees/${changeName}`;
+    // keep last_transition equal for consistent case
+    writeState(worktreeChangeDir, wtState);
+    return { changeDir, worktreeAbs, worktreeChangeDir };
+  }
+
+  it('closing + consistent worktree → exit 0, worktree dir removed, pointer null', () => {
+    const repo = createRepo();
+    try {
+      const changeName = 't3-closing-consistent';
+      const changeDir = initChangeAsExecuting(repo, changeName);
+      const { worktreeAbs, worktreeChangeDir } = createWorktreeAndSync(repo, changeName);
+      assert.ok(existsSync(worktreeAbs), 'worktree should exist before transition');
+      assert.ok(existsSync(worktreeChangeDir), 'worktree change dir should exist');
+
+      const result = ssf(`state transition ${changeDir} closing`);
+      assert.equal(result.exitCode, 0, `expected exit 0 but got ${result.exitCode}: stderr=${result.stderr} stdout=${result.stdout}`);
+      assert.match(result.stdout, /closing/);
+      assert.equal(existsSync(worktreeAbs), false, 'worktree dir should be removed after closing');
+      const afterState = readState(changeDir);
+      assert.equal(afterState.state, 'closing');
+      assert.equal(afterState.worktree, null, 'worktree pointer should be null after cleanup');
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it('closing + diverged worktree → exit 1, worktree dir stays, state remains executing', () => {
+    const repo = createRepo();
+    try {
+      const changeName = 't3-closing-diverged';
+      const changeDir = initChangeAsExecuting(repo, changeName);
+      const { worktreeAbs, worktreeChangeDir } = createWorktreeAndSync(repo, changeName);
+      // make worktree newer => diverged
+      const wtState = readState(worktreeChangeDir);
+      wtState.last_transition = '2026-01-02T00:00:00.000Z';
+      writeState(worktreeChangeDir, wtState);
+      // also modify proposal to ensure diverged if fallback to hash, but timestamp suffices
+      writeFileSync(join(worktreeChangeDir, 'proposal.md'), '## Why\nDiverged proposal content newer.\n## What Changes\n- diverged');
+
+      const result = ssf(`state transition ${changeDir} closing`);
+      assert.equal(result.exitCode, 1, `expected exit 1 but got ${result.exitCode}: ${result.stderr}`);
+      assert.match(result.stderr, /diverged/i);
+      assert.match(result.stderr, /Refusing/);
+      assert.equal(existsSync(worktreeAbs), true, 'worktree dir should remain after diverged refusal');
+      const afterState = readState(changeDir);
+      assert.equal(afterState.state, 'executing', 'state should remain executing after diverged refusal');
+      assert.equal(afterState.worktree, `changes/worktrees/${changeName}`);
+    } finally {
+      // clean worktree if still exists (unlock not needed)
+      try { execFileSync('git', ['worktree', 'remove', '--force', join(repo, 'changes', 'worktrees', 't3-closing-diverged')], { cwd: repo, stdio: 'ignore' }); } catch {}
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it('cleanup failure injection (locked worktree) → exit 0, stderr contains manual cleanup command', () => {
+    const repo = createRepo();
+    try {
+      const changeName = 't3-cleanup-fail';
+      const changeDir = initChangeAsExecuting(repo, changeName);
+      const { worktreeAbs } = createWorktreeAndSync(repo, changeName);
+      // lock worktree to make remove fail (needs cwd inside the temp repo)
+      execFileSync('git', ['worktree', 'lock', worktreeAbs], { cwd: repo, stdio: 'pipe' });
+
+      const result = ssf(`state transition ${changeDir} closing`);
+      assert.equal(result.exitCode, 0, `expected exit 0 despite cleanup failure, got ${result.exitCode}: ${result.stderr}`);
+      assert.match(result.stderr, /automatic worktree removal failed/i);
+      assert.match(result.stderr, /git worktree remove --force/);
+      assert.ok(result.stderr.includes(worktreeAbs) || result.stderr.includes(`changes/worktrees/${changeName}`));
+      // state should be closing despite cleanup failure
+      const afterState = readState(changeDir);
+      assert.equal(afterState.state, 'closing');
+      // worktree should still exist
+      assert.equal(existsSync(worktreeAbs), true);
+      // pointer should remain non-null because cleanup failed
+      assert.equal(afterState.worktree, `changes/worktrees/${changeName}`);
+
+      // cleanup for next test: unlock and remove
+      execFileSync('git', ['worktree', 'unlock', worktreeAbs], { cwd: repo, stdio: 'pipe' });
+      execFileSync('git', ['worktree', 'remove', '--force', worktreeAbs], { cwd: repo, stdio: 'pipe' });
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it('transition from inside worktree copy → state transition succeeds, dir remains, stderr contains skipping warning', () => {
+    const repo = createRepo();
+    try {
+      const changeName = 't3-inside-worktree';
+      const changeDir = initChangeAsExecuting(repo, changeName);
+      const { worktreeAbs, worktreeChangeDir } = createWorktreeAndSync(repo, changeName);
+      // run transition from inside worktree copy: changeDir is worktreeChangeDir, cwd is inside worktree
+      const result = ssf(`state transition ${worktreeChangeDir} closing`, { cwd: worktreeAbs });
+      assert.equal(result.exitCode, 0, `inside transition should succeed, got ${result.exitCode}: ${result.stderr}`);
+      assert.match(result.stderr, /skipping automatic worktree removal/i);
+      assert.match(result.stderr, /inside the worktree copy/i);
+      // worktree dir should still exist (not removed to avoid stranding cwd)
+      assert.equal(existsSync(worktreeAbs), true);
+      // worktree copy state should be closing
+      const wtAfter = readState(worktreeChangeDir);
+      assert.equal(wtAfter.state, 'closing');
+      // main copy state should remain executing (we transitioned the copy, not main)
+      const mainAfter = readState(changeDir);
+      assert.equal(mainAfter.state, 'executing');
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it('abandoned transition also triggers cleanup (consistent worktree → removed, pointer null)', () => {
+    const repo = createRepo();
+    try {
+      const changeName = 't3-abandoned-cleanup';
+      const changeDir = initChangeAsExecuting(repo, changeName);
+      const { worktreeAbs } = createWorktreeAndSync(repo, changeName);
+      const result = ssf(`state transition ${changeDir} abandoned`);
+      assert.equal(result.exitCode, 0, `abandoned should succeed, got ${result.exitCode}: ${result.stderr}`);
+      assert.equal(existsSync(worktreeAbs), false, 'worktree should be removed after abandoned');
+      const afterState = readState(changeDir);
+      assert.equal(afterState.state, 'abandoned');
+      assert.equal(afterState.worktree, null);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 });
