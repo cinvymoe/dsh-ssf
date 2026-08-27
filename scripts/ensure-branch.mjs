@@ -14,9 +14,10 @@
 // instead of failing. Worktrees are the only isolation mode — there is no
 // branch fallback.
 //
-// Usage: node ensure-branch.mjs <change-dir> [change-name] [--isolate] [--force]
+// Usage: node ensure-branch.mjs <change-dir> [change-name] [--isolate] [--force] [--sync]
 //   --isolate  create an isolated environment on any branch via an in-repo
 //              worktree (default: pass through on non-protected branches)
+//   --sync     force main -> worktree overwrite when reusing an existing worktree
 //
 // Security: every git invocation uses execFileSync with a LITERAL command
 // ('git') and a LITERAL argument array (no shell, no variable args array) —
@@ -25,6 +26,7 @@
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { recordWorktree, divergence } from './lib/worktree-authority.mjs';
 
 const changeDir = process.argv[2];
 // change-name is the first positional argument after the change directory that
@@ -33,9 +35,10 @@ const changeDir = process.argv[2];
 const changeName = process.argv.slice(3).find((arg) => !arg.startsWith('--'));
 const isolate = process.argv.includes('--isolate');
 const force = process.argv.includes('--force');
+const sync = process.argv.includes('--sync');
 
 if (!changeDir) {
-  console.error('Usage: node ensure-branch.mjs <change-dir> [change-name] [--isolate] [--force]');
+  console.error('Usage: node ensure-branch.mjs <change-dir> [change-name] [--isolate] [--force] [--sync]');
   process.exit(2);
 }
 
@@ -111,9 +114,21 @@ function copyActiveChange(worktreeRoot) {
 
 // Isolation via an in-repo worktree (literal arg array) — the only isolation
 // mode. A worktree left over from a previous run is reused by re-copying the
-// active change artifacts.
+// active change artifacts, guarded by divergence protection.
 if (existsSync(worktreePath)) {
+  const d = divergence(sourceChangeDir);
+  if (!sync && d.diverged && d.worktreeNewer) {
+    console.error(`ensure-branch: worktree copy at ${worktreePath} is newer than the source change directory. Refusing to overwrite. Re-run with --sync to force source -> worktree copy, or sync the worktree copy back first.`);
+    process.exit(1);
+  }
+  if (!sync && d.diverged && !d.freshnessKnown) {
+    console.error(`ensure-branch: worktree copy at ${worktreePath} diverged from the source and freshness cannot be determined. Refusing to overwrite. Re-run with --sync to force source -> worktree copy.`);
+    process.exit(1);
+  }
+  // diverged but worktreeNewer=false and freshnessKnown=true (worktree older) -> allow overwrite
   copyActiveChange(worktreePath);
+  recordWorktree(sourceChangeDir, repoRoot, worktreePath);
+  if (sync) console.log(`ensure-branch: --sync forced source -> worktree copy at ${worktreePath}.`);
   console.log(`ensure-branch: reused existing git worktree at ${worktreePath}. Make implementation edits there.`);
   process.exit(0);
 }
@@ -121,6 +136,7 @@ if (existsSync(worktreePath)) {
 try {
   execFileSync('git', ['worktree', 'add', worktreePath, '-b', name], { ...GIT_OPTS, stdio: 'inherit' });
   copyActiveChange(worktreePath);
+  recordWorktree(sourceChangeDir, repoRoot, worktreePath);
   console.log(`ensure-branch: created git worktree at ${worktreePath} on branch '${name}' with active change artifacts. Make all implementation edits there.`);
   process.exit(0);
 } catch (e) {
