@@ -11,6 +11,9 @@ The format loosely follows Keep a Changelog.
 - **DSH 插件（dsh-ssf）**：新增 `packages/dsh-ssf/` 单包双半插件——host 半注册 7 个 `ssf_*` 原生工具（`ssf_list`/`ssf_state`/`ssf_workflow`/`ssf_execution`/`ssf_validate`/`ssf_guard`/`ssf_run`）与变更状态服务（`ssf` settings 命名空间推送 `{ changes, scannedAt }` 快照），client 半提供设置页"Spec 工作流"tab；9 个工作流技能改为"优先调用 `ssf_*` 原生工具、CLI 回退"；`ssf` CLI 行为不变（仅新增行为中性的 `SSF_COMMANDS` 导出）。
 - **`ssf isolate` 仓库内 worktree 复用**：仓库内 worktree 路径（`changes/worktrees/<name>`）已存在时直接复用并重新复制活动变更工件；复用路径与创建路径共享 `copyActiveChange`，复用时不检查 worktree 是否属于本仓库（与分支复用一致的宽松语义）。
 - **`ssf isolate` 非保护分支隔离选择（`--isolate`）**：非保护分支（非 `main`/`master`）默认以退出码 0 放行，并追加提示 `To create an isolated context, re-run with --isolate.`；带 `--isolate` 重跑则在任意分支上显式创建隔离环境，语义与保护分支强制隔离一致（通过仓库内 worktree，见下方"纯 worktree 隔离模式"条目）。保护分支强制隔离语义不变，`--force` 仍仅用于批准保护分支原地编辑。
+- **`ssf isolate` 权威 worktree 指针与副本分叉警告（warn-only）**：`ssf isolate` 成功创建或复用主隔离 worktree（`change-name` 等于变更目录名）时将仓库相对路径 `changes/worktrees/<name>` 写入 `.spec-superflow.yaml` 的 `worktree` 字段（`prototype-<id>` 不占用）；`ssf state transition` 与 `ssf execution review` 检测到主检出与 worktree 副本分叉时向 stderr 打印 warn-only 警告（含 worktree 路径与分叉事实），不改变退出码、不阻断操作。
+- **`ssf state transition` 终态自动清理隔离 worktree**：`ssf state transition <change-dir> closing|abandoned` 在 guard 前先做分叉前置检查——分叉则以退出码 1 拒绝并提示先同步；通过后持久化状态，再自动执行 `git worktree remove --force` 移除隔离 worktree 并将 `worktree` 字段重置为 `null`；清理失败仅警告且退出码仍为 0，不回滚状态，并打印手动清理命令；从 worktree 副本内部发起时跳过自动清理并警告提示回主检出执行。
+- **`ssf isolate` 复用分叉保护与 `--sync` 显式强制覆盖**：复用既有 `changes/worktrees/<name>` 时，若 worktree 副本比主检出更新（`last_transition` 更晚）或分叉不可判定（缺状态文件但 artifacts hash 分叉），`ssf isolate` 以退出码 1 拒绝覆盖；确认 worktree 副本工件可弃时加 `--sync` 强制主→worktree 覆盖，否则先手动把 worktree 副本工件同步回主检出；退出码约定不变（0=放行、1=STOP、2=用法错误），`--force` 语义不变。
 
 ### Changed
 

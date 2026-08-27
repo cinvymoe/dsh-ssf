@@ -31,7 +31,7 @@ Branch/worktree preflight before ANY implementation edit (mandatory — do not s
    on `main`/`master` or pass `--isolate`, and exits non-zero if it cannot and
    you have not approved `--force`. On a
    non-protected branch it exits zero by default and prints a hint that you may
-   re-run with `--isolate` to force an isolated environment.
+   re-run with `--isolate` to force an isolated environment. 复用既有 worktree 时，若 worktree 副本比主检出更新或分叉不可判定（任一副本缺状态文件但内容分叉），`ssf isolate` 以退出码 1 拒绝；确认 worktree 副本工件可弃时用 `--sync` 强制主→worktree 覆盖（`ssf isolate <change-dir> <change-name> --sync`），否则先手动把 worktree 副本工件同步回主检出。
 2. If `ssf isolate` exits non-zero: STOP. Do not edit `main`/`master` in place.
    Ask the user for explicit approval (and re-run with `ssf isolate <change-dir> <change-name> --force`
    only after they approve).
@@ -41,6 +41,7 @@ Branch/worktree preflight before ANY implementation edit (mandatory — do not s
    branch.
 4. Once `ssf isolate` succeeds (with or without `--isolate`), report the chosen
    branch/worktree and make all implementation edits there.
+5. `ssf isolate` 成功创建或复用主隔离 worktree 时（`change-name` 等于变更目录名时），在 `.spec-superflow.yaml` 记录 `worktree` 指针（仓库相对路径 `changes/worktrees/<name>`；`prototype-<id>` 不记录）；后续 `ssf state transition` 与 `ssf execution review` 若在 stderr 输出副本分叉警告（`warning: change artifacts diverged between this copy and the worktree copy at ...`），应先解决分叉再继续——分叉警告为 warn-only，不改变退出码。
 
 ## Core Laws
 
