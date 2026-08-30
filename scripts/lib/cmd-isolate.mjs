@@ -14,17 +14,21 @@ export async function run(args) {
     options: {
       isolate: { type: 'boolean', default: false },
       force: { type: 'boolean', default: false },
+      confirm: { type: 'boolean', default: false },
+      sync: { type: 'boolean', default: false },
     },
   });
   const changeDir = positionals[0];
   const changeName = positionals[1];
   if (!changeDir) {
-    console.error('Usage: ssf isolate <change-dir> [change-name] [--isolate] [--force]');
+    console.error('Usage: ssf isolate <change-dir> [change-name] [--isolate] [--force] [--confirm] [--sync]');
     process.exit(2);
   }
   const extra = [];
   if (values.isolate) extra.push('--isolate');
   if (values.force) extra.push('--force');
+  if (values.confirm) extra.push('--confirm');
+  if (values.sync) extra.push('--sync');
   // Literal command ('node') + literal argument array, no shell — same safe form
   // as cmd-install-*.mjs. execFileSync throws on non-zero exit; propagate its status.
   const nodeArgs = [ENSURE, changeDir];

@@ -79,4 +79,25 @@ describe('cmd-isolate optional change name (#52)', () => {
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(argv, [ENSURE, '/tmp/changes/demo', '--isolate', '--force']);
   });
+
+  it('forwards --confirm when the caller passes it', () => {
+    const { result, argv } = runIsolate(['/tmp/changes/demo', '--confirm']);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(argv, [ENSURE, '/tmp/changes/demo', '--confirm']);
+  });
+
+  it('forwards --sync when the caller passes it', () => {
+    const { result, argv } = runIsolate(['/tmp/changes/demo', '--sync']);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(argv, [ENSURE, '/tmp/changes/demo', '--sync']);
+  });
+
+  it('forwards name with --confirm and --sync together keeping name before flags', () => {
+    const { result, argv } = runIsolate(['/tmp/changes/demo', 'my-change', '--confirm', '--sync']);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(argv, [ENSURE, '/tmp/changes/demo', 'my-change', '--confirm', '--sync']);
+  });
 });
