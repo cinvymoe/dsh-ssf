@@ -29,12 +29,13 @@ Branch/worktree preflight before ANY implementation edit (mandatory — do not s
    This script enforces git isolation: it creates an in-repo git worktree（位于
    `<change-dir>` 所在仓库的 `changes/worktrees/` 下；路径已存在时复用）when you are
    on `main`/`master` or pass `--isolate`, and exits non-zero if it cannot and
-   you have not approved `--force`. On a
+   you have not approved `--force`. On a protected branch (`main`/`master`) without any decision flag (`--confirm`/`--force`/`--isolate`/`--sync`) it stops with exit 1 and prints the plan to stderr (`Confirmation required before creating/reusing the isolated worktree at <worktreePath> (branch '<name>') ... re-run with --confirm to create/reuse the worktree, or with --force to edit '<branch>' in place`) with zero side effects（确认门禁；在保护分支上不带决策标志运行将以退出码 1 停下并打印计划）. On a
    non-protected branch it exits zero by default and prints a hint that you may
    re-run with `--isolate` to force an isolated environment. 复用既有 worktree 时，若 worktree 副本比主检出更新或分叉不可判定（任一副本缺状态文件但内容分叉），`ssf isolate` 以退出码 1 拒绝；确认 worktree 副本工件可弃时用 `--sync` 强制主→worktree 覆盖（`ssf isolate <change-dir> <change-name> --sync`），否则先手动把 worktree 副本工件同步回主检出。
 2. If `ssf isolate` exits non-zero: STOP. Do not edit `main`/`master` in place.
-   Ask the user for explicit approval (and re-run with `ssf isolate <change-dir> <change-name> --force`
-   only after they approve).
+   Distinguish the two exit-1 causes by the output:
+   - **Creation failure** (no `Confirmation required` in output): the worktree could not be created and no `--force` was given — existing `--force` approval flow. Ask the user for explicit approval and re-run with `ssf isolate <change-dir> <change-name> --force` only after they approve.
+   - **Confirmation gate** (output contains `Confirmation required`): protected-branch confirmation gate（保护分支确认门禁）. The agent MUST present the user a two-way choice: continue in place on the protected branch → re-run `ssf isolate <change-dir> <change-name> --force`; create/reuse the isolated worktree → re-run `ssf isolate <change-dir> <change-name> --confirm`. Re-run with the chosen flag only after the user's explicit choice（取得明确选择后重跑）.
 3. If it succeeds on a non-protected branch and prints the `--isolate` hint: ask
    the user whether they want an isolated environment. If they agree, re-run with
    `ssf isolate <change-dir> <change-name> --isolate`; if they decline, continue on the current
