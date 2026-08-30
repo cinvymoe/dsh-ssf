@@ -5,7 +5,7 @@
 - **Strategy**: `serial`
 - **Tasks**: 1.1 (`scripts/ensure-branch.mjs` 门禁 + --confirm/--force 语义) + 1.2 (`tests/lib/ensure-branch.test.mjs` 两阶段重写与扩展)
 - **Base SHA**: `54d8fb64cffd0e41c4706c1f52b12f5e75cdfccb` (short `54d8fb6`)
-- **Head SHA**: `2fa3dca506567b9e3b89ad962d50857af6b12aad` (short `2fa3dca`)
+- **Head SHA**: `7d9b93a35eb7593e20f79d469061b87f573dc03d` (short `7d9b93a`)
 - **Worktree**: `/mnt/sdb1/opencode-plug/spec-superflow/changes/worktrees/protected-isolation-choice` (branch `protected-isolation-choice`)
 - **Date**: 2026-08-30
 
@@ -119,5 +119,5 @@ ok 2 - T2: isolate-worktree-hardening pointer and reuse protection (10/10 pass, 
 
 ## Commits
 - Base: 54d8fb6 (54d8fb64cffd0e41c4706c1f52b12f5e75cdfccb)
-- Head: 2fa3dca (2fa3dca506567b9e3b89ad962d50857af6b12aad)
-- Commit: `2fa3dca feat(isolate): gate protected branch with --confirm/--force (w1-ensure-branch-gate)`
+- Head: 7d9b93a (7d9b93a35eb7593e20f79d469061b87f573dc03d)
+- Commit: `7d9b93a feat(isolate): gate protected branch with --confirm/--force (w1-ensure-branch-gate)`
