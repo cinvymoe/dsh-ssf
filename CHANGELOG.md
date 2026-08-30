@@ -8,6 +8,8 @@ The format loosely follows Keep a Changelog.
 
 ### Added
 
+- **保护分支隔离确认门禁（`--confirm`）**：`scripts/ensure-branch.mjs` 新增 `--confirm` 标志；在 `main`/`master` 保护分支上不带任何决策标志（`--confirm`/`--force`/`--isolate`/`--sync`）运行时，向 stderr 打印计划的仓库内 worktree 路径（`changes/worktrees/<name>`）与分支名及两个重跑选项（`--confirm` 创建/复用 worktree、`--force` 原地编辑）并以退出码 1 结束，零副作用（不创建、不复制、不修改）；`--isolate`/`--sync` 视为已选择隔离、不触发门禁，`--confirm --sync` 组合用于"确认复用并强制覆盖"；判定顺序固定为矛盾检查（exit 2）→ 门禁（exit 1）→ `--force` 短路（exit 0）→ 复用/创建，门禁先于分叉检查与任何文件系统副作用；复用分叉保护、`--sync` 强制覆盖、`recordWorktree` 指针记录与终态清理语义不变；退出码约定不变（0=放行、1=STOP、2=用法错误）。
+- **`ssf isolate` 转发 `--confirm`/`--sync` 并修复 `--sync` 缺陷**：`scripts/lib/cmd-isolate.mjs` 在 `parseArgs` 中声明并转发 `--confirm` 与 `--sync`，修复文档中已记载但运行报 `Unknown option '--sync'` 的 `ssf isolate <change-dir> <change-name> --sync` 缺陷；usage 同步更新为 `ssf isolate <change-dir> [change-name] [--isolate] [--force] [--confirm] [--sync]`，转发顺序固定为 `--isolate` → `--force` → `--confirm` → `--sync`。
 - **DSH 插件（dsh-ssf）**：新增 `packages/dsh-ssf/` 单包双半插件——host 半注册 7 个 `ssf_*` 原生工具（`ssf_list`/`ssf_state`/`ssf_workflow`/`ssf_execution`/`ssf_validate`/`ssf_guard`/`ssf_run`）与变更状态服务（`ssf` settings 命名空间推送 `{ changes, scannedAt }` 快照），client 半提供设置页"Spec 工作流"tab；9 个工作流技能改为"优先调用 `ssf_*` 原生工具、CLI 回退"；`ssf` CLI 行为不变（仅新增行为中性的 `SSF_COMMANDS` 导出）。
 - **`ssf isolate` 仓库内 worktree 复用**：仓库内 worktree 路径（`changes/worktrees/<name>`）已存在时直接复用并重新复制活动变更工件；复用路径与创建路径共享 `copyActiveChange`，复用时不检查 worktree 是否属于本仓库（与分支复用一致的宽松语义）。
 - **`ssf isolate` 非保护分支隔离选择（`--isolate`）**：非保护分支（非 `main`/`master`）默认以退出码 0 放行，并追加提示 `To create an isolated context, re-run with --isolate.`；带 `--isolate` 重跑则在任意分支上显式创建隔离环境，语义与保护分支强制隔离一致（通过仓库内 worktree，见下方"纯 worktree 隔离模式"条目）。保护分支强制隔离语义不变，`--force` 仍仅用于批准保护分支原地编辑。
@@ -17,6 +19,8 @@ The format loosely follows Keep a Changelog.
 
 ### Changed
 
+- **`--force` 短路与互斥约束收紧**：在保护分支上 `--force` 现直接以警告并退出码 0 放行原地编辑，不再要求先经历创建失败；`--confirm` 与 `--force` 同时出现视为矛盾选择、以退出码 2 结束并提示二选一；执行顺序与确认门禁共同构成固定判定链，退出码约定不变（0=放行、1=STOP、2=用法错误）。
+- **build-executor preflight 二选一确认流程**：`skills/build-executor/SKILL.md` 第 1 步补充确认门禁说明（保护分支无决策标志时 exit 1、打印计划、零副作用）；第 2 步按输出是否含 `Confirmation required` 区分"创建失败"（既有 `--force` 批准流程）与"确认门禁"，后者要求 agent 向用户呈现二选一（原地继续 → 重跑 `--force`；创建/复用 worktree → 重跑 `--confirm`）并取得明确选择后重跑；非保护分支 `--isolate` 提示与 worktree 指针/分叉警告语义不变；测试同步：`tests/lib/ensure-branch.test.mjs` 两阶段门禁、`--force` 短路、互斥、复用门禁及全部 10 个 T2 用例追加 `--confirm`，`tests/lib/cmd-isolate.test.mjs` 新增 `--confirm`/`--sync` 及组合转发用例。
 - **`ssf isolate` worktree 位置改为仓库内**：worktree 创建位置由仓库上一层兄弟目录（`<repoRoot>/../<repoName>-<name>`）改为仓库内 `changes/worktrees/<name>`；分支名与复用语义不变（路径已存在时直接复用并重新复制活动变更工件）。
 - **`ssf isolate` 纯 worktree 隔离模式**：隔离改为纯 worktree 模式，完全移除 `git switch -c` 分支回退与遗留隔离分支的 `git switch` 复用，worktree 是唯一隔离模式；worktree 创建失败（非"路径已存在"）且无 `--force` 时一律 exit 1（STOP）。`--force` 门不变，仍仅批准保护分支原地编辑；退出码约定不变（0=放行、1=STOP、2=用法错误）。
 - **build-executor preflight 措辞同步**：preflight 第 1 步描述由 "creates a git worktree (preferred) or a new branch" 改为 "creates an in-repo git worktree（位于 `<change-dir>` 所在仓库的 `changes/worktrees/` 下；路径已存在时复用）when you are on `main`/`master` or pass `--isolate`"；`ssf isolate <change-dir> --isolate` 重跑与 STOP/`--force` 流程不变。

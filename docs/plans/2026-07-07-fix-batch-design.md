@@ -121,3 +121,21 @@
 4. **忽略规则**：本项目 `.gitignore` 第 35 行已忽略 `/changes/`，因此仓库内 worktree（`changes/worktrees/` 下）不会被纳入版本控制；测试 fixture 不依赖 ignore 规则（断言 worktree 存在与工件复制即可）。
 
 **同步范围**：`skills/build-executor/SKILL.md` preflight 第 1 步措辞由 "sibling git worktree（位于仓库旁；路径已存在时复用）" 改为 "in-repo git worktree（位于 `<change-dir>` 所在仓库的 `changes/worktrees/` 下；路径已存在时复用）"；`ssf isolate <change-dir> --isolate` 重跑与 STOP/`--force` 流程不变；`CHANGELOG.md` [Unreleased] 新增条目。上一补充（2026-08-07）保留作为历史记录。
+
+---
+
+## 2026-08-30 补充：保护分支隔离确认门禁（protected-isolation-choice）
+
+> 关联变更：`changes/protected-isolation-choice` | 方案：确认门禁 + 标志中介（--confirm/--force 二选一）| 基线：v1.x 现状
+
+**背景**：`scripts/ensure-branch.mjs` 在 `main`/`master` 保护分支上不经用户确认直接创建/复用仓库内 worktree，隔离是强制自动的、用户事后才发现 `changes/worktrees/<name>` 已生成；同时 `scripts/lib/cmd-isolate.mjs` 未声明 `--sync` 导致 `ssf isolate <change-dir> <change-name> --sync` 报 `Unknown option '--sync'` 与文档不符。本变更在保留强制隔离语义的前提下，于成功路径前增加显式用户确认门禁，并修复转发缺陷。前述补充（2026-08-05/2026-08-07/2026-08-20）保留作为历史记录，本补充不取代（supersede）任何既有补充，仅收窄 2026-08-05 决策"保护分支强制隔离语义不变"为"强制隔离语义保留,创建/复用前需用户二选一确认"。
+
+**设计决策**：
+
+1. **保护分支确认门禁与 `--confirm` 标志**：`scripts/ensure-branch.mjs` 新增 `--confirm` 解析，usage 更新为 `node ensure-branch.mjs <change-dir> [change-name] [--isolate] [--force] [--confirm] [--sync]`；在保护分支上且 `!confirm && !force && !isolate && !sync` 时，向 stderr 打印计划（`Confirmation required before creating/reusing the isolated worktree at <worktreePath> (branch '<name>'). Ask the user: re-run with --confirm to create/reuse the worktree, or with --force to edit '<branch>' in place.` 含 worktree 路径与两个重跑命令）并以退出码 1 结束，零副作用（不创建、不复制、不修改，门禁先于分叉检查与任何文件系统副作用）；`--isolate`/`--sync` 视为"已选择隔离"不触发门禁，`--confirm --sync` 组合用于"确认复用并强制覆盖"。
+2. **`--force` 短路与互斥约束**：门禁判定之后、复用/创建之前，`PROTECTED.includes(branch) && force` 时输出 `WARNING — editing protected branch '<branch>' in place with --force.` 并以退出码 0 放行，不再要求先经历创建失败；`confirm && force` 时以退出码 2 结束并提示 `--confirm and --force are mutually exclusive.`；判定顺序固定为矛盾检查（exit 2）→ 门禁（exit 1）→ `--force` 短路（exit 0）→ 复用/创建；既有"创建失败后 `--force` 放行"路径保留，服务于非保护分支 `--isolate` 创建失败场景。
+3. **复用与权威指针语义不变**：`existsSync(worktreePath)` 复用、`divergence` 分叉保护、`--sync` 强制主→worktree 覆盖、`recordWorktree` 指针记录、`copyActiveChange` 工件复制与终态自动清理逻辑均逐字不变；worktree 路径方案（`<repoRoot>/changes/worktrees/<name>`）不变；退出码约定不变（0=放行、1=STOP、2=用法错误）。
+4. **`cmd-isolate` 转发修复**：`scripts/lib/cmd-isolate.mjs` 在 `parseArgs` 中声明 `confirm` 与 `sync`（`type: 'boolean', default: false`），`extra` 按序追加 `--confirm`/`--sync`（`--isolate` → `--force` → `--confirm` → `--sync`），修复 `ssf isolate <dir> <name> --sync` 的 `Unknown option` 缺陷；usage 同步更新为 `ssf isolate <change-dir> [change-name] [--isolate] [--force] [--confirm] [--sync]`。
+5. **技能与测试同步**：`skills/build-executor/SKILL.md` preflight 第 1 步补充确认门禁说明（保护分支无决策标志时 exit 1、打印计划、零副作用），第 2 步按输出是否含 `Confirmation required` 区分"创建失败"与"确认门禁"，后者要求 agent 向用户呈现二选一（原地继续 → `--force`；创建/复用 → `--confirm`）并取得明确选择后重跑；`tests/lib/ensure-branch.test.mjs` 将保护分支创建改为两阶段门禁、新增 `--force` 短路、互斥、复用门禁用例，全部 10 个 T2 用例追加 `--confirm`；`tests/lib/cmd-isolate.test.mjs` 新增 `--confirm`/`--sync` 及组合转发用例。
+
+**同步范围**：`CHANGELOG.md` [Unreleased] 新增本变更条目（保护分支确认门禁、`--confirm` 标志、`--force` 短路、互斥约束、`--isolate`/`--sync` 免门禁、`cmd-isolate` 转发修复、退出码约定不变）；`skills/build-executor/SKILL.md` preflight 段落同步；前述补充（2026-08-05/2026-08-07/2026-08-20）保留作为历史记录。本补充不取代任何既有设计，仅将 2026-08-05 决策"保护分支强制隔离语义不变"收窄为"强制隔离语义保留,创建/复用前需用户二选一确认"。
