@@ -14,9 +14,10 @@
 // instead of failing. Worktrees are the only isolation mode — there is no
 // branch fallback.
 //
-// Usage: node ensure-branch.mjs <change-dir> [change-name] [--isolate] [--force] [--sync]
+// Usage: node ensure-branch.mjs <change-dir> [change-name] [--isolate] [--force] [--confirm] [--sync]
 //   --isolate  create an isolated environment on any branch via an in-repo
 //              worktree (default: pass through on non-protected branches)
+//   --confirm  confirm creating/reusing the isolated worktree on a protected branch
 //   --sync     force main -> worktree overwrite when reusing an existing worktree
 //
 // Security: every git invocation uses execFileSync with a LITERAL command
@@ -35,10 +36,16 @@ const changeDir = process.argv[2];
 const changeName = process.argv.slice(3).find((arg) => !arg.startsWith('--'));
 const isolate = process.argv.includes('--isolate');
 const force = process.argv.includes('--force');
+const confirm = process.argv.includes('--confirm');
 const sync = process.argv.includes('--sync');
 
 if (!changeDir) {
-  console.error('Usage: node ensure-branch.mjs <change-dir> [change-name] [--isolate] [--force] [--sync]');
+  console.error('Usage: node ensure-branch.mjs <change-dir> [change-name] [--isolate] [--force] [--confirm] [--sync]');
+  process.exit(2);
+}
+
+if (confirm && force) {
+  console.error('ensure-branch: --confirm and --force are mutually exclusive. Choose one: --confirm to create/reuse the isolated worktree, or --force to approve editing the protected branch in place.');
   process.exit(2);
 }
 
@@ -110,6 +117,16 @@ function copyActiveChange(worktreeRoot) {
     dereference: false,
     verbatimSymlinks: true,
   });
+}
+
+if (PROTECTED.includes(branch) && !confirm && !force && !isolate && !sync) {
+  console.error(`ensure-branch: on protected branch '${branch}'. Confirmation required before creating/reusing the isolated worktree at ${worktreePath} (branch '${name}'). Ask the user: re-run with --confirm to create/reuse the worktree, or with --force to edit '${branch}' in place.`);
+  process.exit(1);
+}
+
+if (PROTECTED.includes(branch) && force) {
+  console.log(`ensure-branch: WARNING — editing protected branch '${branch}' in place with --force. This modifies the current branch directly.`);
+  process.exit(0);
 }
 
 // Isolation via an in-repo worktree (literal arg array) — the only isolation

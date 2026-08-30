@@ -77,9 +77,23 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
     writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
     git(repoDir, 'checkout', '-q', 'main');
 
-    const r = run([changeDir, 'planned-change']);
     const worktree = join(repoDir, 'changes', 'worktrees', 'planned-change');
+    // Phase 1: without any decision flag, gate must refuse with Confirmation required and zero side effects
+    const gated = run([changeDir, 'planned-change']);
+    try {
+      assert.equal(gated.ok, false, `gate should refuse without --confirm/--force, got: ${gated.out}`);
+      assert.match(gated.out, /Confirmation required/i, `output should mention Confirmation required, got: ${gated.out}`);
+      assert.match(gated.out, /--confirm/, `output should hint at --confirm, got: ${gated.out}`);
+      assert.match(gated.out, /--force/, `output should hint at --force, got: ${gated.out}`);
+      assert.match(gated.out, /planned-change/, `output should contain worktree path/branch name, got: ${gated.out}`);
+      assert.equal(existsSync(worktree), false, 'worktree must not be created on gate refusal');
+      assert.equal(existsSync(join(worktree, 'changes', 'planned-change', 'proposal.md')), false);
+    } finally {
+      if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
+    }
 
+    // Phase 2: with --confirm, creation succeeds
+    const r = run([changeDir, 'planned-change', '--confirm']);
     try {
       assert.equal(r.ok, true, r.out);
       assert.equal(existsSync(join(worktree, 'changes', 'planned-change', 'proposal.md')), true);
@@ -159,6 +173,65 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
       if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
     }
   });
+
+  it('SHALL allow --force to edit protected branch in place without creating a worktree', () => {
+    const changeDir = join(repoDir, 'changes', 'force-short');
+    mkdirSync(changeDir, { recursive: true });
+    writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
+    git(repoDir, 'checkout', '-q', 'main');
+
+    const worktree = join(repoDir, 'changes', 'worktrees', 'force-short');
+    if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
+
+    const r = run([changeDir, 'force-short', '--force']);
+    try {
+      assert.equal(r.ok, true, `force short-circuit should succeed, got: ${r.out}`);
+      assert.match(r.out, /in place/i, `output should mention in place, got: ${r.out}`);
+      assert.equal(existsSync(worktree), false, 'worktree must not be created with --force short-circuit');
+    } finally {
+      if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
+    }
+  });
+
+  it('SHALL refuse when --confirm and --force are both given (mutually exclusive)', () => {
+    const changeDir = join(repoDir, 'changes', 'mutual-change');
+    mkdirSync(changeDir, { recursive: true });
+    writeFileSync(join(changeDir, 'proposal.md'), 'hello');
+    git(repoDir, 'checkout', '-q', 'main');
+
+    const r = run([changeDir, 'mutual-change', '--confirm', '--force']);
+    assert.equal(r.ok, false, `mutual exclusion should fail, got: ${r.out}`);
+    assert.match(r.out, /mutually exclusive/i, `output should mention mutually exclusive, got: ${r.out}`);
+  });
+
+  it('SHALL require confirmation before reusing an existing worktree on a protected branch', () => {
+    const changeDir = join(repoDir, 'changes', 'reuse-gate');
+    mkdirSync(changeDir, { recursive: true });
+    writeFileSync(join(changeDir, 'proposal.md'), 'source-v1');
+    git(repoDir, 'checkout', '-q', 'main');
+    const worktree = join(repoDir, 'changes', 'worktrees', 'reuse-gate');
+    mkdirSync(join(repoDir, 'changes', 'worktrees'), { recursive: true });
+    if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
+    git(repoDir, 'worktree', 'add', '-q', worktree, '-b', 'reuse-gate');
+    const wtChangeDir = join(worktree, 'changes', 'reuse-gate');
+    // Create a distinct file in worktree copy to detect modification
+    mkdirSync(wtChangeDir, { recursive: true });
+    writeFileSync(join(wtChangeDir, 'proposal.md'), 'worktree-original-content');
+    // Also ensure .spec-superflow.yaml exists for divergence tracking
+    writeFileSync(join(wtChangeDir, '.spec-superflow.yaml'), 'state: executing\nworktree: changes/worktrees/reuse-gate\nlast_transition: 2026-01-01T00:00:00.000Z\n');
+    writeFileSync(join(changeDir, '.spec-superflow.yaml'), 'state: executing\nworktree: null\nlast_transition: 2026-01-01T00:00:00.000Z\n');
+    writeFileSync(join(changeDir, 'proposal.md'), 'source-v2');
+
+    try {
+      const r = run([changeDir, 'reuse-gate']);
+      assert.equal(r.ok, false, `reuse gate should refuse without --confirm, got: ${r.out}`);
+      assert.match(r.out, /Confirmation required/i, `output should mention Confirmation required, got: ${r.out}`);
+      const after = readFileSync(join(wtChangeDir, 'proposal.md'), 'utf-8');
+      assert.equal(after, 'worktree-original-content', 'worktree copy must not be modified on gate refusal');
+    } finally {
+      if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
+    }
+  });
 });
 
 // T2: pointer recording and reuse divergence protection
@@ -204,7 +277,7 @@ describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
       writeFileSync(join(changeDir, 'proposal.md'), 'hello');
       writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
 
-      const r = run([changeDir, 'my-change']);
+      const r = run([changeDir, 'my-change', '--confirm']);
       const worktree = join(repo, 'changes', 'worktrees', 'my-change');
       assert.equal(r.ok, true, `creation should succeed, got: ${r.out}`);
       const field = readWorktreeField(changeDir);
@@ -224,7 +297,7 @@ describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
       writeFileSync(join(changeDir, 'proposal.md'), 'hello');
       writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
 
-      const r = run([changeDir, 'propagate-create']);
+      const r = run([changeDir, 'propagate-create', '--confirm']);
       const worktree = join(repo, 'changes', 'worktrees', 'propagate-create');
       assert.equal(r.ok, true, `creation should succeed, got: ${r.out}`);
       const srcField = readWorktreeField(changeDir);
@@ -247,7 +320,7 @@ describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
       writeFileSync(join(changeDir, 'proposal.md'), 'hello');
       writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
 
-      const r = run([changeDir, 'prototype-abc123']);
+      const r = run([changeDir, 'prototype-abc123', '--confirm']);
       const worktree = join(repo, 'changes', 'worktrees', 'prototype-abc123');
       assert.equal(r.ok, true, `prototype creation should succeed, got: ${r.out}`);
       const field = readWorktreeField(changeDir);
@@ -266,7 +339,7 @@ describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
       writeFileSync(join(changeDir, 'proposal.md'), 'source-v1');
       writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
 
-      let r = run([changeDir, 'div-newer']);
+      let r = run([changeDir, 'div-newer', '--confirm']);
       assert.equal(r.ok, true, `initial creation failed: ${r.out}`);
       const worktree = join(repo, 'changes', 'worktrees', 'div-newer');
       const wtChangeDir = join(worktree, 'changes', 'div-newer');
@@ -276,7 +349,7 @@ describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
       // source stays older but with different content to detect overwrite
       writeFileSync(join(changeDir, 'proposal.md'), 'source-v2');
       // reuse without --sync should refuse
-      r = run([changeDir, 'div-newer']);
+      r = run([changeDir, 'div-newer', '--confirm']);
       assert.equal(r.ok, false, `reuse with newer worktree should fail (exit 1), got: ${r.out}`);
       assert.match(r.out, /newer/i, `stderr should mention newer, got: ${r.out}`);
       assert.match(r.out, /--sync/, `stderr should hint --sync, got: ${r.out}`);
@@ -296,7 +369,7 @@ describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
       writeFileSync(join(changeDir, 'proposal.md'), 'source-v1');
       writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
 
-      let r = run([changeDir, 'div-hash']);
+      let r = run([changeDir, 'div-hash', '--confirm']);
       assert.equal(r.ok, true, `initial creation failed: ${r.out}`);
       const worktree = join(repo, 'changes', 'worktrees', 'div-hash');
       const wtChangeDir = join(worktree, 'changes', 'div-hash');
@@ -305,7 +378,7 @@ describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
       writeFileSync(join(wtChangeDir, 'proposal.md'), 'diverged-content');
       // also ensure source has proposal different
       writeFileSync(join(changeDir, 'proposal.md'), 'source-v2');
-      r = run([changeDir, 'div-hash']);
+      r = run([changeDir, 'div-hash', '--confirm']);
       assert.equal(r.ok, false, `hash-diverged without freshness should fail, got: ${r.out}`);
       assert.match(r.out, /freshness|cannot be determined/i, `stderr should mention freshness, got: ${r.out}`);
       assert.match(r.out, /--sync/);
@@ -325,7 +398,7 @@ describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
       writeFileSync(join(changeDir, 'proposal.md'), 'source-v1');
       writeStateYaml(changeDir, { last_transition: '2026-01-02T00:00:00.000Z', worktree: null });
 
-      let r = run([changeDir, 'div-older']);
+      let r = run([changeDir, 'div-older', '--confirm']);
       assert.equal(r.ok, true, `initial creation failed: ${r.out}`);
       const worktree = join(repo, 'changes', 'worktrees', 'div-older');
       const wtChangeDir = join(worktree, 'changes', 'div-older');
@@ -334,14 +407,14 @@ describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
       writeFileSync(join(wtChangeDir, 'proposal.md'), 'old-worktree-content');
       // update source
       writeFileSync(join(changeDir, 'proposal.md'), 'source-v2');
-      r = run([changeDir, 'div-older']);
+      r = run([changeDir, 'div-older', '--confirm']);
       assert.equal(r.ok, true, `reuse with older worktree should succeed, got: ${r.out}`);
       assert.match(r.out, /reused/i);
       const after = readFileSync(join(wtChangeDir, 'proposal.md'), 'utf-8');
       assert.equal(after, 'source-v2', 'worktree copy should be overwritten when older');
 
       // consistent case: run again without changes, should also succeed
-      r = run([changeDir, 'div-older']);
+      r = run([changeDir, 'div-older', '--confirm']);
       assert.equal(r.ok, true, `reuse when consistent should succeed, got: ${r.out}`);
 
       if (existsSync(worktree)) git(repo, 'worktree', 'remove', '--force', worktree);
@@ -358,14 +431,14 @@ describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
       writeFileSync(join(changeDir, 'proposal.md'), 'source-v1');
       writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
 
-      let r = run([changeDir, 'div-sync']);
+      let r = run([changeDir, 'div-sync', '--confirm']);
       assert.equal(r.ok, true, `initial creation failed: ${r.out}`);
       const worktree = join(repo, 'changes', 'worktrees', 'div-sync');
       const wtChangeDir = join(worktree, 'changes', 'div-sync');
       writeFileSync(join(wtChangeDir, 'proposal.md'), 'worktree-newer-content');
       setLastTransition(wtChangeDir, '2026-01-02T00:00:00.000Z');
       writeFileSync(join(changeDir, 'proposal.md'), 'source-v2');
-      r = run([changeDir, 'div-sync', '--sync']);
+      r = run([changeDir, 'div-sync', '--confirm', '--sync']);
       assert.equal(r.ok, true, `reuse with --sync should succeed, got: ${r.out}`);
       assert.match(r.out, /--sync forced/i, `output should contain --sync forced, got: ${r.out}`);
       const after = readFileSync(join(wtChangeDir, 'proposal.md'), 'utf-8');
@@ -384,14 +457,14 @@ describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
       writeFileSync(join(changeDir, 'proposal.md'), 'source-v1');
       writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
 
-      let r = run([changeDir, 'div-sync-hash']);
+      let r = run([changeDir, 'div-sync-hash', '--confirm']);
       assert.equal(r.ok, true, `initial creation failed: ${r.out}`);
       const worktree = join(repo, 'changes', 'worktrees', 'div-sync-hash');
       const wtChangeDir = join(worktree, 'changes', 'div-sync-hash');
       rmSync(join(wtChangeDir, '.spec-superflow.yaml'), { force: true });
       writeFileSync(join(wtChangeDir, 'proposal.md'), 'diverged-content');
       writeFileSync(join(changeDir, 'proposal.md'), 'source-v2');
-      r = run([changeDir, 'div-sync-hash', '--sync']);
+      r = run([changeDir, 'div-sync-hash', '--confirm', '--sync']);
       assert.equal(r.ok, true, `sync should force overwrite hash-diverged, got: ${r.out}`);
       assert.match(r.out, /--sync forced/i);
       const after = readFileSync(join(wtChangeDir, 'proposal.md'), 'utf-8');
@@ -410,7 +483,7 @@ describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
       writeFileSync(join(changeDir, 'proposal.md'), 'source-v1');
       writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
 
-      let r = run([changeDir, 'reuse-pointer']);
+      let r = run([changeDir, 'reuse-pointer', '--confirm']);
       assert.equal(r.ok, true, r.out);
       const worktree = join(repo, 'changes', 'worktrees', 'reuse-pointer');
       // tamper pointer to null, then reuse should re-record
@@ -418,7 +491,7 @@ describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
       // ensure worktree older so reuse allowed
       const wtChangeDir = join(worktree, 'changes', 'reuse-pointer');
       setLastTransition(wtChangeDir, '2026-01-01T00:00:00.000Z');
-      r = run([changeDir, 'reuse-pointer']);
+      r = run([changeDir, 'reuse-pointer', '--confirm']);
       assert.equal(r.ok, true, r.out);
       const field = readWorktreeField(changeDir);
       assert.equal(field, 'changes/worktrees/reuse-pointer');
@@ -436,7 +509,7 @@ describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
       writeFileSync(join(changeDir, 'proposal.md'), 'source-v1');
       writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
 
-      let r = run([changeDir, 'propagate-reuse']);
+      let r = run([changeDir, 'propagate-reuse', '--confirm']);
       assert.equal(r.ok, true, `initial creation failed: ${r.out}`);
       const worktree = join(repo, 'changes', 'worktrees', 'propagate-reuse');
       const wtChangeDir = join(worktree, 'changes', 'propagate-reuse');
@@ -444,7 +517,7 @@ describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
       writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
       writeStateYaml(wtChangeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
       // reuse should re-propagate pointer to both
-      r = run([changeDir, 'propagate-reuse']);
+      r = run([changeDir, 'propagate-reuse', '--confirm']);
       assert.equal(r.ok, true, `reuse should succeed, got: ${r.out}`);
       const srcField = readWorktreeField(changeDir);
       assert.equal(srcField, 'changes/worktrees/propagate-reuse');
