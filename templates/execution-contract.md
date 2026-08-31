@@ -88,7 +88,7 @@ wave 才可以开始。`parallel` 只表示允许在宿主支持并发派发时�
 
 ## Review Gates
 
-- **强制审查点**：每个 Execution Wave 完成后记录 `ssf execution review` 的 review receipt
+- **强制审查点**：每个 Execution Wave 完成后记录 review receipt：`ssf execution review <change-dir> --wave <id> --base <sha> --head <sha> --report <path> --verdict <pass|fail>`
 - **阻塞类别**：依赖未通过、review receipt 为 `fail`、缺失或过期
 - **收口条件**：所有当前 wave 都有 `pass` review receipt
 

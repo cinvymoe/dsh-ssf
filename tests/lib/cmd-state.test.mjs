@@ -201,6 +201,18 @@ describe('cmd-state: transition', () => {
     }
   });
 
+  it('treats a bare change name as changes/<name>', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'ssf-state-bare-name-'));
+    try {
+      const result = ssf('state init bare-change', { cwd: projectRoot });
+      assert.equal(result.exitCode, 0, result.stderr);
+      assert.ok(existsSync(join(projectRoot, 'changes', 'bare-change', '.spec-superflow.yaml')));
+      assert.ok(!existsSync(join(projectRoot, 'bare-change')), 'bare name must not create a directory at the cwd root');
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it('rejects exploring to approved-for-build when workflow is auto', () => {
     rmSync(join(tempDir, '.spec-superflow.yaml'), { force: true });
     ssf(`state init ${tempDir}`);

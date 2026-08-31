@@ -185,6 +185,14 @@ describe('ssf execution', () => {
     assert.equal(result.json.recommendation.facts.documented_task_count, 2);
   });
 
+  it('counts task headings when tasks.md has no closeout checklist', () => {
+    writeFileSync(join(changeDir, 'tasks.md'), '# Tasks\n\n## T1 First task\n\n## T2 Second task\n\n## T3 Third task\n');
+    const result = runSsf(['execution', 'recommend', changeDir, '--json']);
+
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.equal(result.json.recommendation.facts.documented_task_count, 3);
+  });
+
   it('requires a current persisted recommendation before a plan can be confirmed', () => {
     const result = runSsf(['execution', 'plan', changeDir, '--mode', 'sdd', '--confirm',
       '--reason', 'independent implementation', '--wave', 'wave-1:parallel:1.1,1.2', '--json'], process.cwd(), {

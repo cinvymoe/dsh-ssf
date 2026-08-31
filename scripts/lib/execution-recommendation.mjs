@@ -137,7 +137,13 @@ export function validateRecommendationReceipt(changeDir, receipt, waves = [], ex
 function countDocumentedTasks(changeDir) {
   const tasksPath = join(changeDir, 'tasks.md');
   if (!existsSync(tasksPath)) return null;
-  return (readFileSync(tasksPath, 'utf8').match(/^- \[[ xX]\] /gm) || []).length;
+  const content = readFileSync(tasksPath, 'utf8');
+  const checkboxes = (content.match(/^- \[[ xX]\] /gm) || []).length;
+  if (checkboxes > 0) return checkboxes;
+  // Planning-phase tasks.md documents tasks as `## T<n>` headings; the
+  // `- [x]` closeout checklist is only appended at closure, so without this
+  // fallback every full change reports documented_task_count 0 until closing.
+  return (content.match(/^#{1,6} T\d+/gm) || []).length;
 }
 
 function result(availableModes, mode, reasons, facts) {

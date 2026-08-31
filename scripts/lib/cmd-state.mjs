@@ -67,16 +67,22 @@ export async function run(args) {
 
   switch (sub) {
     case 'init': {
-      if (!existsSync(changeDir)) {
-        mkdirSync(changeDir, { recursive: true });
+      // A bare change name (no path separator, not dot-prefixed) targets
+      // changes/<name>: `ssf state init my-change` must not create ./my-change
+      // at the cwd root.
+      const initDir = /[/\\]/.test(changeDir) || changeDir.startsWith('.')
+        ? changeDir
+        : join('changes', changeDir);
+      if (!existsSync(initDir)) {
+        mkdirSync(initDir, { recursive: true });
       }
-      const hash = computeArtifactsHash(changeDir);
-      const ch = computeContractHash(changeDir);
-      const state = readState(changeDir);
+      const hash = computeArtifactsHash(initDir);
+      const ch = computeContractHash(initDir);
+      const state = readState(initDir);
       state.artifacts_hash = hash;
       state.contract_hash = ch;
       state.last_transition = new Date().toISOString();
-      writeState(changeDir, state);
+      writeState(initDir, state);
       if (values.json) {
         console.log(JSON.stringify({ ok: true, artifacts_hash: hash, contract_hash: ch }));
       } else {

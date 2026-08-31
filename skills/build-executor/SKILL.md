@@ -42,7 +42,7 @@ Branch/worktree preflight before ANY implementation edit (mandatory — do not s
    branch.
 4. Once `ssf isolate` succeeds (with or without `--isolate`), report the chosen
    branch/worktree and make all implementation edits there.
-5. `ssf isolate` 成功创建或复用主隔离 worktree 时（`change-name` 等于变更目录名时），在 `.spec-superflow.yaml` 记录 `worktree` 指针（仓库相对路径 `changes/worktrees/<name>`；`prototype-<id>` 不记录）；后续 `ssf state transition` 与 `ssf execution review` 若在 stderr 输出副本分叉警告（`warning: change artifacts diverged between this copy and the worktree copy at ...`），应先解决分叉再继续——分叉警告为 warn-only，不改变退出码。
+5. `ssf isolate` 成功创建或复用主隔离 worktree 时（`change-name` 等于变更目录名时），在 `.spec-superflow.yaml` 记录 `worktree` 指针（仓库相对路径 `changes/worktrees/<name>`；`prototype-<id>` 不记录）；后续 `ssf state transition` 与 `ssf execution review` 若在 stderr 输出副本分叉警告（`warning: change artifacts diverged between this copy and the worktree copy at ...`），应先解决分叉再继续——分叉警告为 warn-only，不改变退出码。预防优于补救：`worktree` 指针存在期间，所有变更工件写入（review report、receipt、checkpoint、tasks.md/进度更新）都在 worktree 副本（`changes/worktrees/<name>/` 下的变更目录）内进行；若写入落在主检出副本，立即同步到 worktree 副本，避免分叉累积。closing 时的强制同步方向是 worktree → 主检出（release-archivist 对分叉的终态转换以退出码 1 拒绝）。
 
 ## Core Laws
 
@@ -129,6 +129,8 @@ The recommendation uses task count, configured `execution.inlineThreshold`, and 
 | **Batch Inline** | Recommended for a bounded sequential batch; it remains serial and is never presented as parallel |
 
 Do not transition to `executing` until `execution show` reports `current: true` and the phase guard passes. A revised plan must repeat `ssf execution recommend` and use `ssf execution revise --confirm`; it creates a new revision and invalidates receipts from the prior revision.
+
+Once `ssf execution plan --confirm` persists a plan, the planning artifacts (proposal.md, specs/, design.md, tasks.md) are hash-bound to that plan and to every recommendation/wave receipt. Any later edit to those artifacts — even a one-line wording touch — makes the plan stale: the guard then forces a fresh `ssf execution recommend`, `ssf execution revise --confirm` creates a new revision, and all prior wave receipts are invalidated and must be re-recorded. Freeze planning artifacts at plan persistence; route genuine scope changes back through spec-writer and accept the receipt re-pinning cost as an explicit decision.
 
 ## Batch Inline Execution
 
