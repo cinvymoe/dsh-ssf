@@ -1,6 +1,12 @@
 // packages/dsh-ssf/lib/tools.js — six structured ssf tools + registration
 // Handlers: ssf_list / ssf_state / ssf_workflow (task 2.2); ssf_execution /
 // ssf_validate / ssf_guard (task 2.3); ssf_run lands in task 2.4.
+//
+// Conversation binding: every structured tool that targets a changeDir (all
+// but ssf_list) and ssf_run with a `changes/<name>` argument report the call
+// through the optional `onBind(sessionId, changeDir)` dep, so the host binds
+// the executed flow to the calling conversation (see lib/index.js
+// bindSession). Binding failures never affect the tool result.
 import { isAbsolute, join, basename } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -102,11 +108,28 @@ export function resolveChangePath(workspaceRoot, changeDir) {
 }
 
 /**
+ * Report a flow execution to the conversation-binding hook. Swallows every
+ * failure: binding is a side effect and must never break the tool result.
+ * @param {undefined|((sessionId: unknown, changeDir: string) => void)} onBind
+ * @param {object|undefined} exec - dsh-tools execution context (may lack agent).
+ * @param {string} changeDir
+ */
+function notifyBind(onBind, exec, changeDir) {
+  try {
+    onBind?.(exec?.agent?.session?.id, changeDir);
+  } catch {
+    // binding is best-effort — the tool result is already computed
+  }
+}
+
+/**
  * Register the six structured ssf tools on ctx.tools.
  * @param {object} ctx - cordis context with a tools registry.
- * @param {{ resolveRoot: () => string }} deps - workspace root resolver (injected by lib/index.js).
+ * @param {{ resolveRoot: () => string, onBind?: (sessionId: unknown, changeDir: string) => void }} deps
+ *   - workspace root resolver plus the optional conversation-binding hook
+ *     (injected by lib/index.js).
  */
-export function registerTools(ctx, { resolveRoot }) {
+export function registerTools(ctx, { resolveRoot, onBind }) {
   for (const id of TOOL_IDS) {
     const isList = id === 'ssf_list';
     const changeDir = {
@@ -132,7 +155,7 @@ export function registerTools(ctx, { resolveRoot }) {
         schema: OUTPUTS[id],
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
       },
-      async execute(args) {
+      async execute(args, exec) {
         const root = resolveRoot();
         if (isList && args.changeDir !== undefined) {
           resolveChangePath(root, args.changeDir);
@@ -141,6 +164,8 @@ export function registerTools(ctx, { resolveRoot }) {
           return { ok: true, changes: scanChanges(root) };
         }
         const changePath = resolveChangePath(root, args.changeDir);
+        // Executing a flow binds it to the calling conversation.
+        notifyBind(onBind, exec, args.changeDir);
         if (id === 'ssf_state') {
           const summary = summarizeChange(changePath);
           // Omit absent degradation markers — undefined values are not lossless JSON.
@@ -228,7 +253,7 @@ export function registerTools(ctx, { resolveRoot }) {
         text: value.stderr ? `exit ${value.exitCode}\n${value.stderr}\n${value.stdout}` : `exit ${value.exitCode}\n${value.stdout}`,
       }],
     },
-    async execute(args) {
+    async execute(args, exec) {
       const argv = args.arguments;
       if (!Array.isArray(argv) || argv.length === 0) {
         throw new Error('ssf_run: arguments must be a non-empty array of strings');
@@ -242,6 +267,10 @@ export function registerTools(ctx, { resolveRoot }) {
       if (!Object.hasOwn(SSF_COMMANDS, argv[0])) {
         throw new Error(`ssf_run: unknown ssf subcommand "${argv[0]}"`);
       }
+      // A `changes/<name>` argument means this run executes that flow — bind
+      // it to the calling conversation like the structured tools do.
+      const changeArg = argv.find((arg) => /^changes\/[^/]+$/.test(arg));
+      if (changeArg) notifyBind(onBind, exec, changeArg.slice('changes/'.length));
       const root = resolveRoot();
       const handle = ctx.subprocess.spawn({
         argv: ['ssf', ...argv],

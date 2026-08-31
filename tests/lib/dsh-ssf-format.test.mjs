@@ -4,7 +4,7 @@
 // canonical form).
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatChangeList, formatChangeDetail } from '../../packages/dsh-ssf/client/format.js';
+import { formatChangeList, formatWorkspaces, formatChangeDetail } from '../../packages/dsh-ssf/client/format.js';
 
 const CLOSED = { name: 'z-closed', state: 'closing', workflow: 'full' };
 const ABANDONED = { name: 'a-abandoned', state: 'abandoned', workflow: 'full' };
@@ -28,6 +28,34 @@ describe('formatChangeList', () => {
     const input = [ACTIVE_A, ACTIVE_B];
     formatChangeList(input);
     assert.deepEqual(input.map((c) => c.name), ['a-active', 'b-active']);
+  });
+});
+
+describe('formatWorkspaces', () => {
+  it('keeps only groups with a changes array and sorts by workspace name', () => {
+    const out = formatWorkspaces([
+      { path: '/b', workspace: 'beta', changes: [ACTIVE_B] },
+      { path: '/a', workspace: 'alpha', changes: [CLOSED, ACTIVE_A] },
+      { path: '/skip', workspace: 'skip' },
+    ]);
+    assert.deepEqual(out.map((w) => w.workspace), ['alpha', 'beta']);
+    assert.deepEqual(out[0].changes.map((c) => c.name), ['a-active', 'z-closed']);
+    assert.deepEqual(out[1].changes.map((c) => c.name), ['b-active']);
+    assert.equal(out.some((w) => w.workspace === 'skip'), false);
+  });
+
+  it('falls back to the path as the display name and does not mutate input', () => {
+    const input = [{ path: '/only/path', changes: [ACTIVE_A] }];
+    const out = formatWorkspaces(input);
+    assert.equal(out[0].workspace, '/only/path');
+    assert.equal(out[0].path, '/only/path');
+    assert.deepEqual(input[0], { path: '/only/path', changes: [ACTIVE_A] });
+  });
+
+  it('returns [] for non-array input and empty arrays', () => {
+    assert.deepEqual(formatWorkspaces(undefined), []);
+    assert.deepEqual(formatWorkspaces(null), []);
+    assert.deepEqual(formatWorkspaces([]), []);
   });
 });
 

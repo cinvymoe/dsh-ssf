@@ -1,10 +1,15 @@
 // packages/dsh-ssf/client/format.js — pure formatting helpers for the
-// "Spec 工作流" settings tab (task 3.3).
+// "Spec 工作流" conversation tab (task 3.3).
 //
 // Canonical ESM copy for node tests; the client bundle (client.js) carries the
 // SAME functions inline because the browser module table does not resolve
 // relative requires. Keep both copies in sync — the tests here lock the
 // behavior.
+//
+// Browser bundle note: client.js has been decoupled from settingsScope and now
+// polls GET /dsh-ssf/snapshot (see lib/index.js endpoint, mirroring
+// dsh-plugin-omoslim's /dsh-plugin-omoslim/subagent-models). This module keeps
+// only the pure helpers; no fetch or scope logic belongs here.
 
 /**
  * Sort the change scan for display: closing/abandoned sink to the bottom,
@@ -21,6 +26,24 @@ export function formatChangeList(scan) {
     if (ra !== rb) return ra - rb;
     return String(a.name).localeCompare(String(b.name));
   });
+}
+
+/**
+ * Normalize the workspace-grouped snapshot for display: keep only groups with
+ * a changes array, sort each group's changes, and sort workspaces by name.
+ * @param {Array<object>|undefined} scan - scanWorkspaceChanges output.
+ * @returns {Array<{path: string, workspace: string, changes: object[]}>} sorted copy.
+ */
+export function formatWorkspaces(scan) {
+  if (!Array.isArray(scan)) return [];
+  return [...scan]
+    .filter((w) => w && Array.isArray(w.changes))
+    .map((w) => ({
+      path: w.path,
+      workspace: w.workspace || w.path,
+      changes: formatChangeList(w.changes),
+    }))
+    .sort((a, b) => String(a.workspace).localeCompare(String(b.workspace)));
 }
 
 /**

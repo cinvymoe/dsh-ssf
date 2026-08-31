@@ -107,6 +107,55 @@ export function scanChanges(workspaceRoot) {
 }
 
 /**
+ * Scan every registered workspace that is a spec-superflow workspace (has a
+ * `changes/` directory) and group its change scan under the workspace.
+ *
+ * Accepts the workspace-registry projection (`ctx.workspaceRegistry.list()`):
+ * each entry carries at least `path`; `title` is used as the display name when
+ * present, falling back to the directory basename. Non-spec workspaces are
+ * skipped — the settings panel shows "all flows" across spec workspaces only.
+ * Entries with duplicate paths are deduplicated (first wins).
+ *
+ * @param {Array<{path?: string, title?: string}>|undefined} workspaces
+ * @returns {Array<{path: string, workspace: string, changes: ReturnType<typeof summarizeChange>[]}>}
+ */
+export function scanWorkspaceChanges(workspaces) {
+  const seen = new Set();
+  const groups = [];
+  for (const ws of workspaces ?? []) {
+    const path = ws?.path;
+    if (typeof path !== 'string' || path.length === 0) continue;
+    if (seen.has(path)) continue;
+    seen.add(path);
+    const changesDir = join(path, 'changes');
+    if (!existsSync(changesDir)) continue;
+    groups.push({
+      path,
+      workspace: ws?.title || basename(path),
+      changes: scanChanges(path),
+    });
+  }
+  return groups;
+}
+
+/**
+ * Flatten a `scanWorkspaceChanges` result into one change list, tagging each
+ * item with its owning workspace so group-aware consumers can still navigate
+ * the flat view.
+ * @param {Array<{path: string, workspace: string, changes: object[]}>} groups
+ * @returns {object[]}
+ */
+export function flattenWorkspaceChanges(groups) {
+  const out = [];
+  for (const group of groups ?? []) {
+    for (const change of group.changes ?? []) {
+      out.push({ ...change, workspace: group.workspace, workspacePath: group.path });
+    }
+  }
+  return out;
+}
+
+/**
  * Normalize the workflow the same way the CLI does (scripts/lib/cmd-state.mjs):
  * `auto` is the persisted marker for "no explicit workflow" and is treated as
  * the default `full` workflow. Anything else passes through unchanged.

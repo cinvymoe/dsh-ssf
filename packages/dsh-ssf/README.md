@@ -2,19 +2,22 @@
 
 `dsh-ssf` packages [spec-superflow](https://github.com/spec-superflow/spec-superflow) as a
 DSH (Cordis) plugin: the host half exposes the workflow state machine through
-native structured tools and pushes change-status snapshots into the `ssf`
-settings namespace; the browser half adds a read-only **Spec 工作流** settings
-tab that renders the snapshots.
+native structured tools and persists change-status snapshots to a standalone
+file (`$DSH_HOME/ssf.json` by default, configurable via `config.path`); the
+browser half polls `GET /dsh-ssf/snapshot` and renders a read-only
+**Spec 工作流** conversation tab. No data is written to `settings.yaml`.
 
 ## Capabilities
 
 Host half (`lib/index.js`):
 
-- `ssf` service: `scan()` / `summary(changeDir)` / `refresh()` over the
-  workspace `changes/` directory.
-- `ssf` settings namespace: pushes `{ changes, scannedAt }` snapshots that the
-  browser half renders (refreshed on plugin ready and after tool-driven state
-  changes).
+- `ssf` service: `scan()` / `summary(changeDir)` / `refresh()` / `getSnapshot()`
+  over the workspace `changes/` directory.
+- Standalone snapshot file: `snapshot-store.js` persists
+  `{ changes, workspaces, scannedAt }` to `$DSH_HOME/ssf.json` (or
+  `config.path`, with `config.dshHome` overriding the home), created with
+  `0700`/`0600` and written atomically; `GET /dsh-ssf/snapshot` (via
+  `ctx.webServer`) serves the in-memory snapshot with `Cache-Control: no-store`.
 
 Structured tools (`lib/tools.js`, registered on `ctx.tools`):
 
@@ -28,9 +31,11 @@ Structured tools (`lib/tools.js`, registered on `ctx.tools`):
 | `ssf_guard` | Phase-transition guard check (from/to states) |
 | `ssf_run` | Fallback: run any `ssf` subcommand, return stdout/stderr/exit code |
 
-Browser half (`client.js`): the **Spec 工作流** settings section (id `ssf`,
-order 30) — change list (name/state/workflow, terminal changes last), click for
-detail (DP decisions, last transition, degradation markers), empty state when no
+Browser half (`client.js`): the **Spec 工作流** conversation tab
+(id `ssf`, order 20) — polls `GET /dsh-ssf/snapshot` every 3s (plus
+`visibilitychange`), filters to the current session's workspace, lists
+changes (name/state/workflow, terminal changes last), click for detail
+(DP decisions, last transition, degradation markers), empty state when no
 snapshot is available.
 
 ## Install
@@ -65,11 +70,15 @@ dsh --profile web
 
 ## Verify
 
-1. Open the Web GUI settings — the **Spec 工作流** tab lists the workspace
-   changes with state/workflow; selecting one shows its DP decisions.
+1. Open the Web GUI — the **Spec 工作流** conversation tab (next to Chat)
+   lists the current workspace's changes with state/workflow; selecting one
+   shows its DP decisions. The snapshot is backed by `$DSH_HOME/ssf.json`
+   (check `cat ~/.dsh/ssf.json` contains `changes/workspaces/scannedAt`) and
+   served at `GET /dsh-ssf/snapshot` (not `settings.yaml`).
 2. In a session, the agent tool list contains `ssf_*`; calling `ssf_state`
    returns the structured JSON state for a change.
-3. The profile log shows no plugin load errors.
+3. `settings.yaml` no longer contains an `ssf:` section; the profile log shows
+   no plugin load errors.
 
 ## Uninstall
 
