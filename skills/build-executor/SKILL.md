@@ -3,13 +3,6 @@ name: build-executor
 description: Govern implementation from an approved execution contract. Invoke when execution-contract.md is approved and the user wants disciplined build work, TDD execution, or guarded batch-by-batch implementation.
 ---
 
-> **Tool-first rule (`dsh-ssf` plugin):** when this skill instructs running a
-> CLI command through `ssf`, prefer the matching native `ssf_*` tool (e.g.
-> `ssf_state`, `ssf_validate`, `ssf_run`) when the `dsh-ssf` plugin is loaded;
-> fall back to executing the exact same command via the `ssf` CLI only when
-> the native tools are unavailable. Commands, arguments, and output handling
-> stay identical on both paths.
-
 # Build Executor
 
 Controls the implementation phase. Uses `execution-contract.md` as the workflow authority.
@@ -20,29 +13,30 @@ For Full or legacy Hotfix, read `execution-contract.md`, `tasks.md`, relevant `s
 
 Check workflow mode and receipt first. Tweak → direct edit mode. Quick or a valid direct incident Hotfix → Direct Quick and Hotfix. Full or legacy Hotfix → standard contract-first discipline.
 
-Branch/worktree preflight before ANY implementation edit (mandatory — do not skip):
-1. Run the isolation check with the change name so the worktree/branch are named
-   after the change (change-name = the last path segment of the change dir):
+Branch/worktree preflight before ANY implementation edit — **workflow-aware**:
+
+**Full / legacy Hotfix — isolation mandatory (do not skip):**
+1. Run the isolation check:
    ```bash
-   ssf isolate <change-dir> <change-name>
+   ssf isolate <change-dir>
    ```
-   This script enforces git isolation: it creates an in-repo git worktree（位于
-   `<change-dir>` 所在仓库的 `changes/worktrees/` 下；路径已存在时复用）when you are
-   on `main`/`master` or pass `--isolate`, and exits non-zero if it cannot and
-   you have not approved `--force`. On a protected branch (`main`/`master`) without any decision flag (`--confirm`/`--force`/`--isolate`/`--sync`) it stops with exit 1 and prints the plan to stderr (`Confirmation required before creating/reusing the isolated worktree at <worktreePath> (branch '<name>') ... re-run with --confirm to create/reuse the worktree, or with --force to edit '<branch>' in place`) with zero side effects（确认门禁；在保护分支上不带决策标志运行将以退出码 1 停下并打印计划）. On a
-   non-protected branch it exits zero by default and prints a hint that you may
-   re-run with `--isolate` to force an isolated environment. 复用既有 worktree 时，若 worktree 副本比主检出更新或分叉不可判定（任一副本缺状态文件但内容分叉），`ssf isolate` 以退出码 1 拒绝；确认 worktree 副本工件可弃时用 `--sync` 强制主→worktree 覆盖（`ssf isolate <change-dir> <change-name> --sync`），否则先手动把 worktree 副本工件同步回主检出。
+   This script enforces git isolation: if you are on `main`/`master` it creates a
+   git worktree (preferred) or a new branch, and exits non-zero if it cannot and you
+   have not approved `--force`.
 2. If `ssf isolate` exits non-zero: STOP. Do not edit `main`/`master` in place.
-   Distinguish the two exit-1 causes by the output:
-   - **Creation failure** (no `Confirmation required` in output): the worktree could not be created and no `--force` was given — existing `--force` approval flow. Ask the user for explicit approval and re-run with `ssf isolate <change-dir> <change-name> --force` only after they approve.
-   - **Confirmation gate** (output contains `Confirmation required`): protected-branch confirmation gate（保护分支确认门禁）. The agent MUST present the user a two-way choice: continue in place on the protected branch → re-run `ssf isolate <change-dir> <change-name> --force`; create/reuse the isolated worktree → re-run `ssf isolate <change-dir> <change-name> --confirm`. Re-run with the chosen flag only after the user's explicit choice（取得明确选择后重跑）.
-3. If it succeeds on a non-protected branch and prints the `--isolate` hint: ask
-   the user whether they want an isolated environment. If they agree, re-run with
-   `ssf isolate <change-dir> <change-name> --isolate`; if they decline, continue on the current
-   branch.
-4. Once `ssf isolate` succeeds (with or without `--isolate`), report the chosen
-   branch/worktree and make all implementation edits there.
-5. `ssf isolate` 成功创建或复用主隔离 worktree 时（`change-name` 等于变更目录名时），在 `.spec-superflow.yaml` 记录 `worktree` 指针（仓库相对路径 `changes/worktrees/<name>`；`prototype-<id>` 不记录）；后续 `ssf state transition` 与 `ssf execution review` 若在 stderr 输出副本分叉警告（`warning: change artifacts diverged between this copy and the worktree copy at ...`），应先解决分叉再继续——分叉警告为 warn-only，不改变退出码。预防优于补救：`worktree` 指针存在期间，所有变更工件写入（review report、receipt、checkpoint、tasks.md/进度更新）都在 worktree 副本（`changes/worktrees/<name>/` 下的变更目录）内进行；若写入落在主检出副本，立即同步到 worktree 副本，避免分叉累积。closing 时的强制同步方向是 worktree → 主检出（release-archivist 对分叉的终态转换以退出码 1 拒绝）。
+   Ask the user for explicit approval (and re-run with `ssf isolate <change-dir> --force`
+   only after they approve). A non-zero exit also covers a failed submodule
+   initialization after the isolation context was created — never implement on a
+   half-initialized worktree.
+3. If it succeeds, report the chosen branch/worktree and make all implementation
+   edits there. `ssf isolate` also recursively initializes submodules in the new
+   isolation context when a `.gitmodules` exists, and appends a cwd-persistence
+   warning (isolation path + mandatory `cd` prefix rule) to
+   `<change-dir>/.superpowers/sdd/progress.md` so later Bash calls do not silently
+   edit the trunk.
+4. Closure (including `ssf finish <change-dir>` for Full/legacy Hotfix) is owned by release-archivist — route there after review passes.
+
+**Quick / direct Hotfix / Tweak / lightweight — skip isolation, edit directly on the current branch.** Rationale: no recordReview (R4 never fires), no `ssf finish` merge, no wave receipts — a worktree would be dead weight. For sensitive scenarios requiring manual isolation, run `ssf isolate <change-dir> --force` explicitly.
 
 ## Core Laws
 
@@ -128,9 +122,9 @@ The recommendation uses task count, configured `execution.inlineThreshold`, and 
 | **Inline** | Recommended for a single sequential task; always available for a user-confirmed choice |
 | **Batch Inline** | Recommended for a bounded sequential batch; it remains serial and is never presented as parallel |
 
-Do not transition to `executing` until `execution show` reports `current: true` and the phase guard passes. A revised plan must repeat `ssf execution recommend` and use `ssf execution revise --confirm`; it creates a new revision and invalidates receipts from the prior revision.
+Do not transition to `executing` until `execution show` reports `current: true` and the phase guard passes. Once `current: true` is confirmed, run `ssf state transition <change-dir> executing` (skip if already in that state). A revised plan must repeat `ssf execution recommend` and use `ssf execution revise --confirm`; it creates a new revision and invalidates receipts from the prior revision.
 
-Once `ssf execution plan --confirm` persists a plan, the planning artifacts (proposal.md, specs/, design.md, tasks.md) are hash-bound to that plan and to every recommendation/wave receipt. Any later edit to those artifacts — even a one-line wording touch — makes the plan stale: the guard then forces a fresh `ssf execution recommend`, `ssf execution revise --confirm` creates a new revision, and all prior wave receipts are invalidated and must be re-recorded. Freeze planning artifacts at plan persistence; route genuine scope changes back through spec-writer and accept the receipt re-pinning cost as an explicit decision.
+When the plan becomes stale only because planning documents received a non-semantic correction (e.g. formatting fixes) and no fail receipt awaits repair, use `ssf execution resync <change-dir> --confirm --reason <text>` instead of revising. Resync refreshes the plan's artifacts_hash reference while keeping every existing receipt intact — unlike `revise`, which re-plans scope into a new revision and invalidates old receipts; resync never changes plan content. The operation writes an audit record to the progress ledger.
 
 ## Batch Inline Execution
 
@@ -164,17 +158,14 @@ use the CLI-provided `waves[].repair` state together with `eligible` and
 `retryable`. The controller does not infer a repair round from filenames or
 history, and must not write, edit, or modify a repair-state file directly.
 
-- **Rounds 1–3 — recovery:** dispatch only the focused repair for the current
+- **Rounds 1–2 — recovery:** dispatch only the focused repair for the current
   wave. Give the implementer the CLI repair round, previous review report, and
   the prior review head. Generate a scoped diff from that head, then dispatch
   the `re-review-prompt.md` reviewer against the prior finding and that scoped
   diff. Do not redispatch dependent waves.
-- **Rounds 4–5 — escalation:** keep the same focused repair and scoped
-  re-review, but explicitly mark the dispatch as escalated and require the
-  report to explain why earlier recovery rounds did not resolve the finding.
-  The fifth unresolved receipt yields CLI status `adjudication-required`; stop
-  automatic dispatch and request a human adjudication rather than attempting a
-  sixth repair.
+- **Third unresolved failure — stop:** the third unresolved receipt yields CLI
+  status `adjudication-required`. Stop automatic dispatch and request a human
+  adjudication rather than attempting a fourth repair.
 - Every focused re-review still writes its separate persisted report and is
   recorded only through `ssf execution review <change-dir> --wave <id> --base
   <sha> --head <sha> --report .superpowers/sdd/reviews/<wave-id>-rereview.md --verdict <pass|fail>`.
@@ -182,7 +173,15 @@ history, and must not write, edit, or modify a repair-state file directly.
 
 ### Per-Task Loop
 1. **Dispatch implementer**: Load the template with `ssf runtime asset read skills/build-executor/implementer-prompt.md`. Extract task brief with `scripts/task-brief PLAN_FILE N`. Include: where task fits, brief path, interfaces from prior tasks, report file path.
-2. **Handle response**: DONE → generate review package + dispatch reviewer. DONE_WITH_CONCERNS → assess. NEEDS_CONTEXT → provide context. BLOCKED → re-dispatch with better model or escalate.
+2. **Handle response**: DONE → generate review package + dispatch reviewer.
+   DONE_WITH_CONCERNS → assess. For NEEDS_CONTEXT, BLOCKED, or another
+   unresolved failure, append `Task N: failed attempt X/3 — <reason>` to the
+   existing progress ledger. Retry only when the controller can name new
+   evidence, new context, or a specific strategy change. The retry brief contains
+   the prior failure reason, the single objective, and the necessary file paths;
+   do not repeat the planning pack or conversation history. After
+   the third unresolved failure, stop automatic dispatch, enter DP-5, and ask
+   the user for a decision.
 3. **Review**: Load `ssf runtime asset read skills/build-executor/task-reviewer-prompt.md`. Reviewer returns spec compliance + code quality verdicts with the wave ID, git range, report path, and `pass`/`fail` receipt command.
 4. **Fix**: If Critical or Important issues, write the `fail` receipt, read the
    CLI repair state, then dispatch only the focused repair and re-review path
@@ -229,7 +228,8 @@ This augments `.superpowers/sdd/progress.md`; it does not replace the progress
 ledger or add a new core workflow state. Do not claim a checkpoint is current
 when `ssf checkpoint list` reports it as stale.
 
-If task hits BLOCKED (3+ fix failures or changes outside declared scope), escalate to SDD.
+If a task reaches three unresolved failures, stop at DP-5 and request a human
+decision. If work moves outside the declared scope, replan instead of retrying.
 
 ## Tweak Mode
 
@@ -242,7 +242,7 @@ Quick direct execution requires the valid receipt, a bounded diff, the receipt's
 ## DP Records
 
 DP-4 is written by `ssf execution plan`; do not write it with raw `state set`.
-DP-5 (debug escalation): `ssf state set <change-dir> dp_5_result "<resolution>"` + timestamp.
+DP-5 (debug escalation): bug-investigator records each failed fix through `ssf debug attempt record`; after at least three distinct attempts and explicit user confirmation, use `ssf debug escalate <change-dir> --decision <continue|abandon> --reason "<resolution>" --confirm`. Raw `state set dp_5_*` is blocked.
 
 ## Completion Standard
 

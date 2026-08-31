@@ -15,12 +15,14 @@ const COMMANDS = {
   sync:           () => import('./lib/cmd-sync.mjs'),
   config:         () => import('./lib/cmd-config.mjs'),
   state:          () => import('./lib/cmd-state.mjs'),
+  debug:          () => import('./lib/cmd-debug.mjs'),
   inject:         () => import('./lib/cmd-inject.mjs'),
   audit:          () => import('./lib/cmd-audit.mjs'),
   checkpoint:     () => import('./lib/cmd-checkpoint.mjs'),
   save:           () => import('./lib/cmd-save.mjs'),
   handoff:        () => import('./lib/cmd-handoff.mjs'),
   isolate:        () => import('./lib/cmd-isolate.mjs'),
+  finish:         () => import('./lib/cmd-finish.mjs'),
   execution:      () => import('./lib/cmd-execution.mjs'),
   resume:         () => import('./lib/cmd-resume.mjs'),
   switch:         () => import('./lib/cmd-switch.mjs'),
@@ -59,6 +61,12 @@ Commands:
   config [options]      Display or modify configuration
   config --resolve-model <profile>  Resolve a configured model profile without switching models
   state <sub> <dir>     Manage .spec-superflow.yaml state (init|check|transition|get|rebuild)
+  debug attempt record <dir> --id <id> --summary <text> --evidence <path>
+                        Record one evidence-backed failed fix attempt
+  debug attempt show <dir> [--json]
+                        Show failed fix attempts for the current execution context
+  debug escalate <dir> --decision <continue|abandon> --reason <text> --confirm
+                        Record guarded DP-5 after at least three failed attempts
   inject <dir>          Generate phase-guard artifacts; use --platforms <name|all> when platform is ambiguous
   audit <dir>           Generate decision-point-audit.md from .spec-superflow.yaml
   checkpoint save <change-dir> --task <id> --next <text>
@@ -77,6 +85,7 @@ Commands:
                         Validate a handoff result
   handoff resolve <change-dir> <id> --decision <accept|reject|defer>
                         Record the explicit handoff decision
+  ssf finish <change-dir>   Merge the isolated branch back to the trunk (--no-ff), verify sync, clean up worktree/branch
   execution recommend <change-dir> [--wave <id>:<strategy>:<task,...>]
                         List execution modes and an evidence-based recommendation
   execution plan <change-dir> --mode <mode> --confirm --reason <text> --wave <id>:<strategy>:<task,...> [--acknowledge-recommendation]
@@ -138,6 +147,9 @@ Examples:
   ssf workflow recommend changes/fix-typo --task-count 1 --file-count 1 --config-doc-only no --schema-api-change no --new-module no --behavioral-constraint-change no --cross-module-change no --uncertainty low --request-kind incident
   ssf workflow accept changes/fix-typo --source direct-request --verification bounded
   ssf state get changes/my-change/ batches_completed
+  ssf debug attempt record changes/my-change/ --id fix-1 --summary "First fix failed" --evidence changes/my-change/.superpowers/sdd/debug-evidence/fix-1.log
+  ssf debug attempt show changes/my-change/ --json
+  ssf debug escalate changes/my-change/ --decision continue --reason "Three fixes failed" --confirm
   ssf checkpoint save changes/my-change/ --task 1.1 --next "Run focused tests"
   ssf checkpoint list changes/my-change/
   ssf save changes/my-change/ --task 1.1 --next "Run focused tests"

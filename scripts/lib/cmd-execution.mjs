@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util';
-import { createPlan, describeWaves, EXECUTION_MODES, readPlan, recordReview, validatePlan, writePlan } from './execution-plan.mjs';
+import { createPlan, describeWaves, EXECUTION_MODES, readPlan, recordReview, resyncPlan, validatePlan, writePlan } from './execution-plan.mjs';
 import {
   createRecommendationReceipt,
   readCurrentRecommendationReceipt,
@@ -8,7 +8,7 @@ import {
 import { readState, writeState } from './state-loader.mjs';
 import { warnIfDiverged } from './worktree-authority.mjs';
 
-const SUBCOMMANDS = ['recommend', 'plan', 'show', 'revise', 'review'];
+const SUBCOMMANDS = ['recommend', 'plan', 'show', 'revise', 'review', 'resync'];
 
 export function run(args, io = { stdout: process.stdout, stderr: process.stderr }) {
   const { positionals, values } = parseArgs({
@@ -53,6 +53,9 @@ export function run(args, io = { stdout: process.stdout, stderr: process.stderr 
     case 'review':
       recordAndPrintReview(changeDir, values, io);
       return { exitCode: 0 };
+    case 'resync':
+      resyncAndPrint(changeDir, values, io);
+      return { exitCode: 0 };
   }
 }
 
@@ -80,11 +83,13 @@ function createAndPrintPlan(changeDir, values, revise, io) {
     throw new Error('Execution mode selection requires --confirm after reviewing "ssf execution recommend" output');
   }
   const followedRecommendation = values.mode === recommendation.recommendation.mode;
-  if (!followedRecommendation && !values['acknowledge-recommendation']) {
-    throw new Error(`${values.mode} differs from the ${recommendation.recommendation.mode} recommendation; pass --acknowledge-recommendation to record the informed choice`);
-  }
-  if (followedRecommendation && values['acknowledge-recommendation']) {
-    throw new Error('--acknowledge-recommendation is only valid when selecting a non-recommended mode');
+  if (!revise) {
+    if (!followedRecommendation && !values['acknowledge-recommendation']) {
+      throw new Error(`${values.mode} differs from the ${recommendation.recommendation.mode} recommendation; pass --acknowledge-recommendation to record the informed choice`);
+    }
+    if (followedRecommendation && values['acknowledge-recommendation']) {
+      throw new Error('--acknowledge-recommendation is only valid when selecting a non-recommended mode');
+    }
   }
 
   const plan = createPlan(changeDir, {
@@ -97,6 +102,9 @@ function createAndPrintPlan(changeDir, values, revise, io) {
     selection: {
       confirmed: true,
       followed_recommendation: followedRecommendation,
+      // Records an *informed* departure from the recommendation, not merely the
+      // --acknowledge-recommendation flag. On the plan path the flag guarantees
+      // it; on the revise path --confirm plus the forced sdd upgrade guarantees it.
       acknowledged_non_recommendation: !followedRecommendation,
     },
     revision: revise ? existing.revision + 1 : undefined,
@@ -146,6 +154,19 @@ function recordAndPrintReview(changeDir, values, io) {
     report: values.report,
   });
   print(values.json, { ok: true, wave: values.wave[0], receipt }, `Review for ${values.wave[0]} recorded: ${receipt.status}.`, io);
+}
+
+function resyncAndPrint(changeDir, values, io) {
+  if (!values.confirm) {
+    throw new Error('Resync overwrites the frozen execution plan hash references and requires explicit --confirm');
+  }
+  if (!values.reason) {
+    throw new Error('--reason is required: describe the non-semantic planning-document correction that made the plan stale');
+  }
+  requireOption(values.reason, '--reason');
+  requireSafeReason(values.reason);
+  const plan = resyncPlan(changeDir, { reason: values.reason });
+  print(values.json, { ok: true, plan }, `Plan resynced to the current artifacts snapshot (revision ${plan.revision} unchanged).`, io);
 }
 
 function writeExecutionSummary(changeDir, plan) {
@@ -209,5 +230,6 @@ function printHelp(io) {
   ssf execution plan <dir> --mode <mode> --confirm --reason <text> --wave <id>:<strategy>:<task,...>[:<depends-on,...>] [--acknowledge-recommendation]
   ssf execution show <dir> [--json]
   ssf execution revise <dir> --mode sdd --confirm --reason <text> --wave <id>:<strategy>:<task,...>[:<depends-on,...>] [--acknowledge-recommendation]
-  ssf execution review <dir> --wave <id> --base <sha> --head <sha> --report <path> --verdict pass|fail\n`);
+  ssf execution review <dir> --wave <id> --base <sha> --head <sha> --report <path> --verdict pass|fail
+  ssf execution resync <dir> --confirm --reason <text>\n`);
 }

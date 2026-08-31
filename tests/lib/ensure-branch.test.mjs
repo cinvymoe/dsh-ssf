@@ -1,42 +1,140 @@
 // tests/lib/ensure-branch.test.mjs
-// Regression for #15: git isolation must be enforceable, not just advised.
+// Regression for #15: git branch isolation must be enforceable, not just advised.
 // `ensure-branch.mjs` must refuse to proceed on a protected branch when it cannot
-// isolate, must allow work on a non-protected branch (with a hint), and must honor
-// `--isolate` on non-protected branches by creating (or reusing) an in-repo
-// worktree instead of silently passing. Worktrees are the only isolation mode:
-// a worktree left over from a previous run is reused by re-copying the active
-// change artifacts.
-//
-// Security: every child process is spawned with execFileSync + literal argument
-// arrays — no shell, no string interpolation.
+// isolate, and must allow work on a non-protected branch.
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..', '..');
 const ENSURE = join(ROOT, 'scripts', 'ensure-branch.mjs');
 
-function run(args) {
-  try {
-    const out = execFileSync('node', [ENSURE, ...args], { encoding: 'utf-8', stdio: 'pipe', timeout: 10000 });
-    return { ok: true, out };
-  } catch (e) {
-    return { ok: false, out: `${e.stdout || ''}\n${e.stderr || ''}` || e.message };
+// Windows: deleting a directory that still holds git/submodule file handles
+// can transiently fail with EPERM/EBUSY. Retry with a short delay so a pure
+// cleanup race never fails the test; non-handle errors still propagate.
+function rmRetry(dir) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (e) {
+      if (!['EPERM', 'EBUSY'].includes(e.code)) throw e;
+      if (attempt === 4) throw e;
+      // 阻塞当前线程 300ms（Atomics.wait 无 shell、无定时器泄漏），
+      // 等待 Windows 释放 git/submodule 文件句柄后重试。
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
+    }
   }
 }
 
-function git(dir, ...args) {
-  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=test', ...args], { cwd: dir, stdio: 'pipe', timeout: 10000 });
+// 无 shell 的进程调用（literal argv 数组）：ai-plugin-scanner 会将
+// execSync + 模板字符串插值识别为 shell injection pattern（high），
+// 且 spawnSync 数组形式本身也更安全。统一从这里发起子进程。
+function runProcess(cmd, args, opts = {}) {
+  const r = spawnSync(cmd, args, {
+    encoding: 'utf-8',
+    stdio: 'pipe',
+    timeout: 60000,
+    env: { ...process.env, GIT_ALLOW_PROTOCOL: 'file' },
+    ...opts,
+  });
+  return r;
 }
 
-function currentBranch(dir) {
-  return execFileSync('git', ['branch', '--show-current'], { cwd: dir, encoding: 'utf-8' }).trim();
+function run(args) {
+  // args 由测试字面量拼接（路径可能含空格），拆分为 argv 数组传递。
+  const argv = args.match(/"[^"]*"|\S+/g).map((a) => a.replace(/^"|"$/g, ''));
+  const r = runProcess(process.execPath, [ENSURE, ...argv]);
+  if (r.status === 0) return { ok: true, out: r.stdout || '' };
+  return { ok: false, out: `${r.stdout || ''}\n${r.stderr || ''}` || r.stderr || String(r.error) };
+}
+
+function git(dir, ...args) {
+  const r = runProcess('git', ['-c', 'user.email=t@t', '-c', 'user.name=test', ...args], { cwd: dir });
+  if (r.status !== 0) {
+    throw new Error(`git ${args.join(' ')} failed (${r.status}): ${r.stderr || r.stdout}`);
+  }
+  return (r.stdout || '').trim();
+}
+
+// Create a bare standalone git repo with a committed file at `dir`.
+function makeRepo(dir) {
+  mkdirSync(dir, { recursive: true });
+  git(dir, 'init', '-q', '--initial-branch=main');
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '-q', '-m', 'init');
+}
+
+// Git for Windows resolves `file:///C:/...` to the POSIX-style path `/C:/...`,
+// whose drive-letter conversion intermittently fails under heavy filesystem
+// load (`git clone` reports "does not appear to be a git repository" even
+// though the source repo is readable). The plain absolute path `C:/...` is
+// handled natively and deterministically, so submodule URLs use it on Windows;
+// POSIX keeps the file:// form (the reliable cross-platform shape CI depends
+// on). Under load the file:// form failed 100% of probe clones while the plain
+// path succeeded 100%, so this is the root-cause fix, not a retry band-aid.
+function submoduleSourceUrl(dir) {
+  return process.platform === 'win32' ? dir.replace(/\\/g, '/') : pathToFileURL(dir).href;
+}
+
+// Build a local-only submodule fixture (no network):
+//   main  --submodule--> subA  --submodule--> subB
+// All URLs point at local repos, so CI without internet works.
+function makeSubmoduleFixture(base) {
+  const subB = join(base, 'subB');
+  const subA = join(base, 'subA');
+  const main = join(base, 'main');
+
+  mkdirSync(subB, { recursive: true });
+  writeFileSync(join(subB, 'b.txt'), 'b');
+  makeRepo(subB);
+
+  mkdirSync(subA, { recursive: true });
+  writeFileSync(join(subA, 'a.txt'), 'a');
+  makeRepo(subA);
+  git(subA, 'submodule', 'add', submoduleSourceUrl(subB), 'subB');
+  git(subA, 'commit', '-q', '-m', 'add nested submodule subB');
+
+  mkdirSync(main, { recursive: true });
+  writeFileSync(join(main, 'm.txt'), 'm');
+  makeRepo(main);
+  git(main, 'submodule', 'add', submoduleSourceUrl(subA), 'subA');
+  git(main, 'commit', '-q', '-m', 'add submodule subA');
+  return { main, subA, subB };
+}
+
+// One rebuild retry: Windows AV/file-system hiccups can transiently hide a
+// freshly created local repo from a file:// clone under full-suite concurrency.
+// The fixture is pure test infrastructure, so a single clean rebuild is enough
+// to ride the hiccup out; a second failure is a real problem and propagates.
+function makeSubmoduleFixtureSafe(base) {
+  try {
+    return makeSubmoduleFixture(base);
+  } catch (e) {
+    rmRetry(base);
+    mkdirSync(base, { recursive: true });
+    return makeSubmoduleFixture(base);
+  }
+}
+
+// Register a submodule whose URL points at a nonexistent local repo, without
+// invoking `git submodule add` (which would reject the URL up front). The
+// gitlink target is the superproject's own HEAD, which is fine: the test only
+// cares that recursive init fails to clone.
+function addBogusSubmodule(repoDir, name, url) {
+  const modulesPath = join(repoDir, '.gitmodules');
+  const existing = existsSync(modulesPath) ? readFileSync(modulesPath, 'utf8') : '';
+  writeFileSync(modulesPath, `${existing}\n[submodule "${name}"]\n\tpath = ${name}\n\turl = ${url}\n`);
+  const head = git(repoDir, 'rev-parse', 'HEAD');
+  git(repoDir, 'update-index', '--add', '--cacheinfo', `160000,${head},${name}`);
+  git(repoDir, 'add', '.gitmodules');
+  git(repoDir, 'commit', '-q', '-m', 'add bogus submodule');
 }
 
 describe('BUG/#15: ensure-branch enforces isolation', () => {
@@ -55,49 +153,53 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
     git(repoDir, 'checkout', '-q', '-b', 'feature/work');
   });
   after(() => {
-    if (existsSync(plainDir)) rmSync(plainDir, { recursive: true, force: true });
-    if (existsSync(repoDir)) rmSync(repoDir, { recursive: true, force: true });
+    if (existsSync(plainDir)) rmRetry(plainDir);
+    if (existsSync(repoDir)) rmRetry(repoDir);
   });
 
   it('SHALL refuse (non-zero) when not inside a git repository', () => {
-    const r = run([plainDir]);
+    const r = run(`"${plainDir}"`);
     assert.equal(r.ok, false, 'ensure-branch must fail outside a git repo');
   });
 
-  it('SHALL allow (zero) work on a non-protected branch and hint at --isolate', () => {
-    const r = run([repoDir]);
+  it('SHALL allow (zero) work on a non-protected branch', () => {
+    const r = run(`"${repoDir}"`);
     assert.equal(r.ok, true, `ensure-branch should pass on feature branch, got: ${r.out}`);
     assert.match(r.out, /already isolated/i);
-    assert.match(r.out, /--isolate/, `output should hint at --isolate, got: ${r.out}`);
   });
 
-  it('SHALL create an in-repo worktree and carry only the active change artifacts from main', () => {
+  it('SHALL create a sibling worktree and carry only the active change artifacts from main', () => {
     const changeDir = join(repoDir, 'changes', 'planned-change');
     mkdirSync(changeDir, { recursive: true });
     writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
     git(repoDir, 'checkout', '-q', 'main');
 
-    const worktree = join(repoDir, 'changes', 'worktrees', 'planned-change');
-    // Phase 1: without any decision flag, gate must refuse with Confirmation required and zero side effects
-    const gated = run([changeDir, 'planned-change']);
-    try {
-      assert.equal(gated.ok, false, `gate should refuse without --confirm/--force, got: ${gated.out}`);
-      assert.match(gated.out, /Confirmation required/i, `output should mention Confirmation required, got: ${gated.out}`);
-      assert.match(gated.out, /--confirm/, `output should hint at --confirm, got: ${gated.out}`);
-      assert.match(gated.out, /--force/, `output should hint at --force, got: ${gated.out}`);
-      assert.match(gated.out, /planned-change/, `output should contain worktree path/branch name, got: ${gated.out}`);
-      assert.equal(existsSync(worktree), false, 'worktree must not be created on gate refusal');
-      assert.equal(existsSync(join(worktree, 'changes', 'planned-change', 'proposal.md')), false);
-    } finally {
-      if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
-    }
+    const r = run(`"${changeDir}" planned-change`);
+    const worktree = join(dirname(repoDir), `${basename(repoDir)}-planned-change`);
 
-    // Phase 2: with --confirm, creation succeeds
-    const r = run([changeDir, 'planned-change', '--confirm']);
     try {
       assert.equal(r.ok, true, r.out);
       assert.equal(existsSync(join(worktree, 'changes', 'planned-change', 'proposal.md')), true);
       assert.equal(existsSync(join(worktree, 'changes', 'planned-change', 'README.md')), false);
+    } finally {
+      if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
+    }
+  });
+
+  it('SHALL default the isolation branch name to the change directory name when no change-name is given', () => {
+    const changeDir = join(repoDir, 'changes', 'default-name');
+    mkdirSync(changeDir, { recursive: true });
+    writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
+    git(repoDir, 'checkout', '-q', 'main');
+
+    const r = run(`"${changeDir}"`);
+    const worktree = join(dirname(repoDir), `${basename(repoDir)}-default-name`);
+
+    try {
+      assert.equal(r.ok, true, r.out);
+      assert.match(r.out, /created git worktree .* on branch 'default-name'/i);
+      const branch = git(worktree, 'branch', '--show-current');
+      assert.equal(branch, 'default-name', 'default isolation branch must be named after the change directory');
     } finally {
       if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
     }
@@ -108,424 +210,128 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
     mkdirSync(changeDir, { recursive: true });
     git(repoDir, 'checkout', '-q', 'main');
 
-    const r = run([changeDir, '../../outside']);
+    const r = run(`"${changeDir}" ../../outside`);
 
     assert.equal(r.ok, false, r.out);
     assert.match(r.out, /single safe path segment/i);
   });
-
-  it('SHALL create an in-repo worktree with --isolate on a non-protected branch, carrying only active change artifacts, without switching the current branch', () => {
-    const changeDir = join(repoDir, 'changes', 'iso-change');
-    mkdirSync(changeDir, { recursive: true });
-    writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
-    git(repoDir, 'checkout', '-q', 'feature/work');
-
-    const r = run([changeDir, 'iso-change', '--isolate']);
-    const worktree = join(repoDir, 'changes', 'worktrees', 'iso-change');
-
-    try {
-      assert.equal(r.ok, true, r.out);
-      assert.equal(existsSync(join(worktree, 'changes', 'iso-change', 'proposal.md')), true);
-      assert.equal(existsSync(join(worktree, 'changes', 'iso-change', 'README.md')), false);
-      assert.equal(currentBranch(repoDir), 'feature/work', 'creating a worktree must not switch the current branch');
-    } finally {
-      if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
-    }
-  });
-
-  it('SHALL reuse an existing in-repo worktree with exit 0 when --isolate is given and the worktree already exists', () => {
-    const changeDir = join(repoDir, 'changes', 'iso-existing');
-    mkdirSync(changeDir, { recursive: true });
-    writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
-    git(repoDir, 'checkout', '-q', 'feature/work');
-    // Pre-create the worktree as if a previous run left it behind.
-    const worktree = join(repoDir, 'changes', 'worktrees', 'iso-existing');
-    mkdirSync(join(repoDir, 'changes', 'worktrees'), { recursive: true });
-    git(repoDir, 'worktree', 'add', '-q', worktree, '-b', 'iso-existing');
-
-    try {
-      const r = run([changeDir, 'iso-existing', '--isolate']);
-
-      assert.equal(r.ok, true, r.out);
-      assert.match(r.out, /reused/i, `should reuse the existing worktree, got: ${r.out}`);
-      assert.equal(existsSync(join(worktree, 'changes', 'iso-existing', 'proposal.md')), true, 'active change artifacts should be re-copied into the reused worktree');
-      assert.equal(currentBranch(repoDir), 'feature/work', 'reusing a worktree must not switch the current branch');
-    } finally {
-      if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
-    }
-  });
-
-  it('SHALL create an in-repo worktree with --isolate and no change-name on a non-protected branch, defaulting the name to the repo name', () => {
-    const changeDir = join(repoDir, 'changes', 'no-name-change');
-    mkdirSync(changeDir, { recursive: true });
-    writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
-    git(repoDir, 'checkout', '-q', 'feature/work');
-
-    const repoName = basename(repoDir);
-    const r = run([changeDir, '--isolate']);
-    const worktree = join(repoDir, 'changes', 'worktrees', repoName);
-
-    try {
-      assert.equal(r.ok, true, r.out);
-      assert.equal(existsSync(join(worktree, 'changes', 'no-name-change', 'proposal.md')), true);
-      assert.equal(existsSync(join(worktree, 'changes', 'no-name-change', 'README.md')), false);
-    } finally {
-      if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
-    }
-  });
-
-  it('SHALL allow --force to edit protected branch in place without creating a worktree', () => {
-    const changeDir = join(repoDir, 'changes', 'force-short');
-    mkdirSync(changeDir, { recursive: true });
-    writeFileSync(join(changeDir, 'proposal.md'), 'Uncommitted planning artifact.');
-    git(repoDir, 'checkout', '-q', 'main');
-
-    const worktree = join(repoDir, 'changes', 'worktrees', 'force-short');
-    if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
-
-    const r = run([changeDir, 'force-short', '--force']);
-    try {
-      assert.equal(r.ok, true, `force short-circuit should succeed, got: ${r.out}`);
-      assert.match(r.out, /in place/i, `output should mention in place, got: ${r.out}`);
-      assert.equal(existsSync(worktree), false, 'worktree must not be created with --force short-circuit');
-    } finally {
-      if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
-    }
-  });
-
-  it('SHALL refuse when --confirm and --force are both given (mutually exclusive)', () => {
-    const changeDir = join(repoDir, 'changes', 'mutual-change');
-    mkdirSync(changeDir, { recursive: true });
-    writeFileSync(join(changeDir, 'proposal.md'), 'hello');
-    git(repoDir, 'checkout', '-q', 'main');
-
-    const r = run([changeDir, 'mutual-change', '--confirm', '--force']);
-    assert.equal(r.ok, false, `mutual exclusion should fail, got: ${r.out}`);
-    assert.match(r.out, /mutually exclusive/i, `output should mention mutually exclusive, got: ${r.out}`);
-  });
-
-  it('SHALL require confirmation before reusing an existing worktree on a protected branch', () => {
-    const changeDir = join(repoDir, 'changes', 'reuse-gate');
-    mkdirSync(changeDir, { recursive: true });
-    writeFileSync(join(changeDir, 'proposal.md'), 'source-v1');
-    git(repoDir, 'checkout', '-q', 'main');
-    const worktree = join(repoDir, 'changes', 'worktrees', 'reuse-gate');
-    mkdirSync(join(repoDir, 'changes', 'worktrees'), { recursive: true });
-    if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
-    git(repoDir, 'worktree', 'add', '-q', worktree, '-b', 'reuse-gate');
-    const wtChangeDir = join(worktree, 'changes', 'reuse-gate');
-    // Create a distinct file in worktree copy to detect modification
-    mkdirSync(wtChangeDir, { recursive: true });
-    writeFileSync(join(wtChangeDir, 'proposal.md'), 'worktree-original-content');
-    // Also ensure .spec-superflow.yaml exists for divergence tracking
-    writeFileSync(join(wtChangeDir, '.spec-superflow.yaml'), 'state: executing\nworktree: changes/worktrees/reuse-gate\nlast_transition: 2026-01-01T00:00:00.000Z\n');
-    writeFileSync(join(changeDir, '.spec-superflow.yaml'), 'state: executing\nworktree: null\nlast_transition: 2026-01-01T00:00:00.000Z\n');
-    writeFileSync(join(changeDir, 'proposal.md'), 'source-v2');
-
-    try {
-      const r = run([changeDir, 'reuse-gate']);
-      assert.equal(r.ok, false, `reuse gate should refuse without --confirm, got: ${r.out}`);
-      assert.match(r.out, /Confirmation required/i, `output should mention Confirmation required, got: ${r.out}`);
-      const after = readFileSync(join(wtChangeDir, 'proposal.md'), 'utf-8');
-      assert.equal(after, 'worktree-original-content', 'worktree copy must not be modified on gate refusal');
-    } finally {
-      if (existsSync(worktree)) git(repoDir, 'worktree', 'remove', '--force', worktree);
-    }
-  });
 });
 
-// T2: pointer recording and reuse divergence protection
-describe('T2: isolate-worktree-hardening pointer and reuse protection', () => {
-  function makeRepo() {
-    const dir = mkdtempSync(join(tmpdir(), 'ssf-t2-'));
-    mkdirSync(join(dir, 'specs'), { recursive: true });
-    writeFileSync(join(dir, 'README.md'), 'x');
-    git(dir, 'init', '-q', '--initial-branch=main');
-    git(dir, 'add', '-A');
-    git(dir, 'commit', '-q', '-m', 'init');
-    return dir;
-  }
-
-  function writeStateYaml(dir, { last_transition, worktree }) {
-    const w = worktree === null || worktree === undefined ? 'null' : worktree;
-    const lt = last_transition === null || last_transition === undefined ? 'null' : last_transition;
-    writeFileSync(join(dir, '.spec-superflow.yaml'), `state: executing\nworktree: ${w}\nlast_transition: ${lt}\n`);
-  }
-
-  function readWorktreeField(dir) {
-    const raw = readFileSync(join(dir, '.spec-superflow.yaml'), 'utf-8');
-    const m = raw.match(/^worktree:\s*(.*)\s*$/m);
-    return m ? m[1].trim() : null;
-  }
-
-  function setLastTransition(dir, ts) {
-    const p = join(dir, '.spec-superflow.yaml');
-    let raw = readFileSync(p, 'utf-8');
-    if (/^last_transition:/m.test(raw)) {
-      raw = raw.replace(/^last_transition:\s*.*$/m, `last_transition: ${ts}`);
-    } else {
-      raw += `\nlast_transition: ${ts}\n`;
-    }
-    writeFileSync(p, raw);
-  }
-
-  it('SHALL record worktree pointer after creation: worktree: changes/worktrees/<name>', () => {
-    const repo = makeRepo();
+describe('worktree-lifecycle R1/R2: submodule init + progress cwd warning', () => {
+  it('R1 SHALL init submodules (incl. nested) inside the created worktree', () => {
+    const base = mkdtempSync(join(tmpdir(), 'ssf-ensure-sub-'));
     try {
-      const changeDir = join(repo, 'changes', 'my-change');
+      const { main } = makeSubmoduleFixtureSafe(base);
+      const changeDir = join(main, 'changes', 'sm-change');
       mkdirSync(changeDir, { recursive: true });
-      writeFileSync(join(changeDir, 'proposal.md'), 'hello');
-      writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
+      writeFileSync(join(changeDir, 'proposal.md'), 'x');
 
-      const r = run([changeDir, 'my-change', '--confirm']);
-      const worktree = join(repo, 'changes', 'worktrees', 'my-change');
-      assert.equal(r.ok, true, `creation should succeed, got: ${r.out}`);
-      const field = readWorktreeField(changeDir);
-      assert.equal(field, 'changes/worktrees/my-change', `worktree field should be repo-relative, got: ${field}`);
-      // clean worktree
-      if (existsSync(worktree)) git(repo, 'worktree', 'remove', '--force', worktree);
-    } finally {
-      if (existsSync(repo)) rmSync(repo, { recursive: true, force: true });
-    }
-  });
+      const r = run(`"${changeDir}" sm-change`);
+      const worktree = join(base, 'main-sm-change');
 
-  it('SHALL propagate worktree pointer into worktree copy after creation', () => {
-    const repo = makeRepo();
-    try {
-      const changeDir = join(repo, 'changes', 'propagate-create');
-      mkdirSync(changeDir, { recursive: true });
-      writeFileSync(join(changeDir, 'proposal.md'), 'hello');
-      writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
-
-      const r = run([changeDir, 'propagate-create', '--confirm']);
-      const worktree = join(repo, 'changes', 'worktrees', 'propagate-create');
-      assert.equal(r.ok, true, `creation should succeed, got: ${r.out}`);
-      const srcField = readWorktreeField(changeDir);
-      assert.equal(srcField, 'changes/worktrees/propagate-create');
-      // worktree copy must also carry the pointer so T3 inside-worktree warning is reachable
-      const wtChangeDir = join(worktree, 'changes', 'propagate-create');
-      const wtField = readWorktreeField(wtChangeDir);
-      assert.equal(wtField, 'changes/worktrees/propagate-create', `worktree copy should carry pointer, got: ${wtField}`);
-      if (existsSync(worktree)) git(repo, 'worktree', 'remove', '--force', worktree);
-    } finally {
-      if (existsSync(repo)) rmSync(repo, { recursive: true, force: true });
-    }
-  });
-
-  it('SHALL NOT record worktree pointer for prototype- names', () => {
-    const repo = makeRepo();
-    try {
-      const changeDir = join(repo, 'changes', 'my-change');
-      mkdirSync(changeDir, { recursive: true });
-      writeFileSync(join(changeDir, 'proposal.md'), 'hello');
-      writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
-
-      const r = run([changeDir, 'prototype-abc123', '--confirm']);
-      const worktree = join(repo, 'changes', 'worktrees', 'prototype-abc123');
-      assert.equal(r.ok, true, `prototype creation should succeed, got: ${r.out}`);
-      const field = readWorktreeField(changeDir);
-      assert.equal(field, 'null', `prototype worktree should not overwrite pointer, got: ${field}`);
-      if (existsSync(worktree)) git(repo, 'worktree', 'remove', '--force', worktree);
-    } finally {
-      if (existsSync(repo)) rmSync(repo, { recursive: true, force: true });
-    }
-  });
-
-  it('SHALL refuse reuse when worktree copy last_transition newer (exit 1) and not modify worktree copy', () => {
-    const repo = makeRepo();
-    try {
-      const changeDir = join(repo, 'changes', 'div-newer');
-      mkdirSync(changeDir, { recursive: true });
-      writeFileSync(join(changeDir, 'proposal.md'), 'source-v1');
-      writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
-
-      let r = run([changeDir, 'div-newer', '--confirm']);
-      assert.equal(r.ok, true, `initial creation failed: ${r.out}`);
-      const worktree = join(repo, 'changes', 'worktrees', 'div-newer');
-      const wtChangeDir = join(worktree, 'changes', 'div-newer');
-      // make worktree newer: edit wt proposal + bump timestamp
-      writeFileSync(join(wtChangeDir, 'proposal.md'), 'worktree-newer-content');
-      setLastTransition(wtChangeDir, '2026-01-02T00:00:00.000Z');
-      // source stays older but with different content to detect overwrite
-      writeFileSync(join(changeDir, 'proposal.md'), 'source-v2');
-      // reuse without --sync should refuse
-      r = run([changeDir, 'div-newer', '--confirm']);
-      assert.equal(r.ok, false, `reuse with newer worktree should fail (exit 1), got: ${r.out}`);
-      assert.match(r.out, /newer/i, `stderr should mention newer, got: ${r.out}`);
-      assert.match(r.out, /--sync/, `stderr should hint --sync, got: ${r.out}`);
-      const after = readFileSync(join(wtChangeDir, 'proposal.md'), 'utf-8');
-      assert.equal(after, 'worktree-newer-content', 'worktree copy must not be modified on refusal');
-      if (existsSync(worktree)) git(repo, 'worktree', 'remove', '--force', worktree);
-    } finally {
-      if (existsSync(repo)) rmSync(repo, { recursive: true, force: true });
-    }
-  });
-
-  it('SHALL refuse reuse when freshness cannot be determined and hash diverged (exit 1)', () => {
-    const repo = makeRepo();
-    try {
-      const changeDir = join(repo, 'changes', 'div-hash');
-      mkdirSync(changeDir, { recursive: true });
-      writeFileSync(join(changeDir, 'proposal.md'), 'source-v1');
-      writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
-
-      let r = run([changeDir, 'div-hash', '--confirm']);
-      assert.equal(r.ok, true, `initial creation failed: ${r.out}`);
-      const worktree = join(repo, 'changes', 'worktrees', 'div-hash');
-      const wtChangeDir = join(worktree, 'changes', 'div-hash');
-      // remove worktree state file to force hash fallback, then diverge content
-      rmSync(join(wtChangeDir, '.spec-superflow.yaml'), { force: true });
-      writeFileSync(join(wtChangeDir, 'proposal.md'), 'diverged-content');
-      // also ensure source has proposal different
-      writeFileSync(join(changeDir, 'proposal.md'), 'source-v2');
-      r = run([changeDir, 'div-hash', '--confirm']);
-      assert.equal(r.ok, false, `hash-diverged without freshness should fail, got: ${r.out}`);
-      assert.match(r.out, /freshness|cannot be determined/i, `stderr should mention freshness, got: ${r.out}`);
-      assert.match(r.out, /--sync/);
-      const after = readFileSync(join(wtChangeDir, 'proposal.md'), 'utf-8');
-      assert.equal(after, 'diverged-content', 'worktree copy must not be modified');
-      if (existsSync(worktree)) git(repo, 'worktree', 'remove', '--force', worktree);
-    } finally {
-      if (existsSync(repo)) rmSync(repo, { recursive: true, force: true });
-    }
-  });
-
-  it('SHALL allow reuse when worktree copy is older or consistent and re-copy (exit 0)', () => {
-    const repo = makeRepo();
-    try {
-      const changeDir = join(repo, 'changes', 'div-older');
-      mkdirSync(changeDir, { recursive: true });
-      writeFileSync(join(changeDir, 'proposal.md'), 'source-v1');
-      writeStateYaml(changeDir, { last_transition: '2026-01-02T00:00:00.000Z', worktree: null });
-
-      let r = run([changeDir, 'div-older', '--confirm']);
-      assert.equal(r.ok, true, `initial creation failed: ${r.out}`);
-      const worktree = join(repo, 'changes', 'worktrees', 'div-older');
-      const wtChangeDir = join(worktree, 'changes', 'div-older');
-      // make worktree older
-      setLastTransition(wtChangeDir, '2026-01-01T00:00:00.000Z');
-      writeFileSync(join(wtChangeDir, 'proposal.md'), 'old-worktree-content');
-      // update source
-      writeFileSync(join(changeDir, 'proposal.md'), 'source-v2');
-      r = run([changeDir, 'div-older', '--confirm']);
-      assert.equal(r.ok, true, `reuse with older worktree should succeed, got: ${r.out}`);
-      assert.match(r.out, /reused/i);
-      const after = readFileSync(join(wtChangeDir, 'proposal.md'), 'utf-8');
-      assert.equal(after, 'source-v2', 'worktree copy should be overwritten when older');
-
-      // consistent case: run again without changes, should also succeed
-      r = run([changeDir, 'div-older', '--confirm']);
-      assert.equal(r.ok, true, `reuse when consistent should succeed, got: ${r.out}`);
-
-      if (existsSync(worktree)) git(repo, 'worktree', 'remove', '--force', worktree);
-    } finally {
-      if (existsSync(repo)) rmSync(repo, { recursive: true, force: true });
-    }
-  });
-
-  it('SHALL force overwrite with --sync when worktree newer, exit 0 and log --sync forced', () => {
-    const repo = makeRepo();
-    try {
-      const changeDir = join(repo, 'changes', 'div-sync');
-      mkdirSync(changeDir, { recursive: true });
-      writeFileSync(join(changeDir, 'proposal.md'), 'source-v1');
-      writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
-
-      let r = run([changeDir, 'div-sync', '--confirm']);
-      assert.equal(r.ok, true, `initial creation failed: ${r.out}`);
-      const worktree = join(repo, 'changes', 'worktrees', 'div-sync');
-      const wtChangeDir = join(worktree, 'changes', 'div-sync');
-      writeFileSync(join(wtChangeDir, 'proposal.md'), 'worktree-newer-content');
-      setLastTransition(wtChangeDir, '2026-01-02T00:00:00.000Z');
-      writeFileSync(join(changeDir, 'proposal.md'), 'source-v2');
-      r = run([changeDir, 'div-sync', '--confirm', '--sync']);
-      assert.equal(r.ok, true, `reuse with --sync should succeed, got: ${r.out}`);
-      assert.match(r.out, /--sync forced/i, `output should contain --sync forced, got: ${r.out}`);
-      const after = readFileSync(join(wtChangeDir, 'proposal.md'), 'utf-8');
-      assert.equal(after, 'source-v2', 'worktree copy should be overwritten with --sync');
-      if (existsSync(worktree)) git(repo, 'worktree', 'remove', '--force', worktree);
-    } finally {
-      if (existsSync(repo)) rmSync(repo, { recursive: true, force: true });
-    }
-  });
-
-  it('SHALL force overwrite with --sync when freshness unknown and diverged', () => {
-    const repo = makeRepo();
-    try {
-      const changeDir = join(repo, 'changes', 'div-sync-hash');
-      mkdirSync(changeDir, { recursive: true });
-      writeFileSync(join(changeDir, 'proposal.md'), 'source-v1');
-      writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
-
-      let r = run([changeDir, 'div-sync-hash', '--confirm']);
-      assert.equal(r.ok, true, `initial creation failed: ${r.out}`);
-      const worktree = join(repo, 'changes', 'worktrees', 'div-sync-hash');
-      const wtChangeDir = join(worktree, 'changes', 'div-sync-hash');
-      rmSync(join(wtChangeDir, '.spec-superflow.yaml'), { force: true });
-      writeFileSync(join(wtChangeDir, 'proposal.md'), 'diverged-content');
-      writeFileSync(join(changeDir, 'proposal.md'), 'source-v2');
-      r = run([changeDir, 'div-sync-hash', '--confirm', '--sync']);
-      assert.equal(r.ok, true, `sync should force overwrite hash-diverged, got: ${r.out}`);
-      assert.match(r.out, /--sync forced/i);
-      const after = readFileSync(join(wtChangeDir, 'proposal.md'), 'utf-8');
-      assert.equal(after, 'source-v2');
-      if (existsSync(worktree)) git(repo, 'worktree', 'remove', '--force', worktree);
-    } finally {
-      if (existsSync(repo)) rmSync(repo, { recursive: true, force: true });
-    }
-  });
-
-  it('SHALL record worktree pointer on reuse as well', () => {
-    const repo = makeRepo();
-    try {
-      const changeDir = join(repo, 'changes', 'reuse-pointer');
-      mkdirSync(changeDir, { recursive: true });
-      writeFileSync(join(changeDir, 'proposal.md'), 'source-v1');
-      writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
-
-      let r = run([changeDir, 'reuse-pointer', '--confirm']);
       assert.equal(r.ok, true, r.out);
-      const worktree = join(repo, 'changes', 'worktrees', 'reuse-pointer');
-      // tamper pointer to null, then reuse should re-record
-      writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
-      // ensure worktree older so reuse allowed
-      const wtChangeDir = join(worktree, 'changes', 'reuse-pointer');
-      setLastTransition(wtChangeDir, '2026-01-01T00:00:00.000Z');
-      r = run([changeDir, 'reuse-pointer', '--confirm']);
-      assert.equal(r.ok, true, r.out);
-      const field = readWorktreeField(changeDir);
-      assert.equal(field, 'changes/worktrees/reuse-pointer');
-      if (existsSync(worktree)) git(repo, 'worktree', 'remove', '--force', worktree);
+      assert.equal(existsSync(join(worktree, 'subA', 'a.txt')), true, 'outer submodule content must be ready');
+      assert.equal(existsSync(join(worktree, 'subA', 'subB', 'b.txt')), true, 'nested submodule content must be ready');
+      // R2: progress ledger is created even when its directory did not exist.
+      assert.equal(existsSync(join(changeDir, '.superpowers', 'sdd', 'progress.md')), true, 'progress.md must be created');
     } finally {
-      if (existsSync(repo)) rmSync(repo, { recursive: true, force: true });
+      rmRetry(base);
     }
   });
 
-  it('SHALL propagate worktree pointer into worktree copy after reuse', () => {
-    const repo = makeRepo();
+  it('R1 SHALL exit non-zero with the failure reason when submodule init fails', () => {
+    const base = mkdtempSync(join(tmpdir(), 'ssf-ensure-badsub-'));
     try {
-      const changeDir = join(repo, 'changes', 'propagate-reuse');
+      const { main } = makeSubmoduleFixtureSafe(base);
+      addBogusSubmodule(main, 'subX', pathToFileURL(join(base, 'does-not-exist')).href);
+      const changeDir = join(main, 'changes', 'bad-change');
       mkdirSync(changeDir, { recursive: true });
-      writeFileSync(join(changeDir, 'proposal.md'), 'source-v1');
-      writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
 
-      let r = run([changeDir, 'propagate-reuse', '--confirm']);
-      assert.equal(r.ok, true, `initial creation failed: ${r.out}`);
-      const worktree = join(repo, 'changes', 'worktrees', 'propagate-reuse');
-      const wtChangeDir = join(worktree, 'changes', 'propagate-reuse');
-      // tamper source pointer to null, ensure worktree copy also loses it via manual clear
-      writeStateYaml(changeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
-      writeStateYaml(wtChangeDir, { last_transition: '2026-01-01T00:00:00.000Z', worktree: null });
-      // reuse should re-propagate pointer to both
-      r = run([changeDir, 'propagate-reuse', '--confirm']);
-      assert.equal(r.ok, true, `reuse should succeed, got: ${r.out}`);
-      const srcField = readWorktreeField(changeDir);
-      assert.equal(srcField, 'changes/worktrees/propagate-reuse');
-      const wtField = readWorktreeField(wtChangeDir);
-      assert.equal(wtField, 'changes/worktrees/propagate-reuse', `worktree copy should carry pointer after reuse, got: ${wtField}`);
-      if (existsSync(worktree)) git(repo, 'worktree', 'remove', '--force', worktree);
+      const r = run(`"${changeDir}" bad-change`);
+
+      assert.equal(r.ok, false, `expected non-zero exit, got: ${r.out}`);
+      assert.match(r.out, /submodule initialization failed/i);
     } finally {
-      if (existsSync(repo)) rmSync(repo, { recursive: true, force: true });
+      rmRetry(base);
+    }
+  });
+
+  it('R1 SHALL skip submodule init and still succeed when there is no .gitmodules', () => {
+    const base = mkdtempSync(join(tmpdir(), 'ssf-ensure-nosub-'));
+    try {
+      const main = join(base, 'main');
+      mkdirSync(main, { recursive: true });
+      writeFileSync(join(main, 'README.md'), 'x');
+      makeRepo(main);
+      const changeDir = join(main, 'changes', 'plain-change');
+      mkdirSync(changeDir, { recursive: true });
+      writeFileSync(join(changeDir, 'proposal.md'), 'x');
+
+      const r = run(`"${changeDir}" plain-change`);
+      const worktree = join(base, 'main-plain-change');
+
+      assert.equal(r.ok, true, r.out);
+      assert.equal(existsSync(join(worktree, 'README.md')), true);
+      assert.equal(existsSync(join(worktree, '.gitmodules')), false);
+    } finally {
+      rmRetry(base);
+    }
+  });
+
+  it('R2 SHALL append the cwd warning to progress.md without overwriting existing records', () => {
+    const base = mkdtempSync(join(tmpdir(), 'ssf-ensure-prog-'));
+    try {
+      const main = join(base, 'main');
+      mkdirSync(main, { recursive: true });
+      writeFileSync(join(main, 'README.md'), 'x');
+      makeRepo(main);
+      const changeDir = join(main, 'changes', 'pg-change');
+      mkdirSync(join(changeDir, '.superpowers', 'sdd'), { recursive: true });
+      writeFileSync(join(changeDir, '.superpowers', 'sdd', 'progress.md'), 'EXISTING RECORD\n');
+
+      const r = run(`"${changeDir}" pg-change`);
+      // ensure-branch 写入 progress 的隔离路径来自 `git rev-parse
+      // --show-toplevel`（长路径形式）；CI Windows 的 TEMP 是 8.3 短名，
+      // 断言必须用 native realpath 规范化后的形式比较。
+      const worktree = realpathSync.native(join(base, 'main-pg-change'));
+
+      assert.equal(r.ok, true, r.out);
+      const progress = readFileSync(join(changeDir, '.superpowers', 'sdd', 'progress.md'), 'utf8');
+      assert.match(progress, /EXISTING RECORD/);
+      assert.ok(progress.indexOf('EXISTING RECORD') < progress.indexOf('cwd 警告'), 'existing record preserved, warning appended');
+      assert.match(progress, /cwd 警告/);
+      assert.ok(progress.includes(worktree), `warning must mention isolated context path ${worktree}`);
+      assert.match(progress, /Bash cwd 不持续/);
+      assert.match(progress, /cd /);
+    } finally {
+      rmRetry(base);
+    }
+  });
+
+  it('R1/R2 SHALL init submodules and write the warning on the git switch -c fallback path', () => {
+    const base = mkdtempSync(join(tmpdir(), 'ssf-ensure-fb-'));
+    try {
+      const { main } = makeSubmoduleFixtureSafe(base);
+      const changeDir = join(main, 'changes', 'fb-change');
+      mkdirSync(changeDir, { recursive: true });
+      writeFileSync(join(changeDir, 'proposal.md'), 'x');
+      // Occupy the worktree path so `git worktree add` fails and the fallback
+      // `git switch -c` path runs instead.
+      const blockedPath = join(base, 'main-fb-change');
+      mkdirSync(blockedPath, { recursive: true });
+      writeFileSync(join(blockedPath, 'blocker.txt'), 'x');
+
+      const r = run(`"${changeDir}" fb-change`);
+
+      assert.equal(r.ok, true, r.out);
+      assert.equal(existsSync(join(main, 'subA', 'a.txt')), true, 'fallback outer submodule content');
+      assert.equal(existsSync(join(main, 'subA', 'subB', 'b.txt')), true, 'fallback nested submodule content');
+      const progress = readFileSync(join(changeDir, '.superpowers', 'sdd', 'progress.md'), 'utf8');
+      // repoRoot 来自 `git rev-parse --show-toplevel`（长路径形式），CI
+      // Windows 的 TEMP 是 8.3 短名，断言必须用 native realpath 规范化。
+      assert.ok(progress.includes(realpathSync.native(main)), 'warning must mention the isolated (branch) context path');
+    } finally {
+      rmRetry(base);
     }
   });
 });

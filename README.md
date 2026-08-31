@@ -123,7 +123,7 @@ gemini extensions update spec-superflow   # 升级
 | **Qoder** | `npx spec-superflow@latest install-qoder` | 已提供安装器 |
 | **OpenCode** | `.opencode/plugins/spec-superflow.js` 或 `.agents/skills -> skills/` | 已提供入口 |
 | **WorkBuddy** | `npx spec-superflow@latest install-workbuddy` | 已提供安装器 |
-| **CodeBuddy Code CLI** | `ssf install-codebuddy` | 已提供安装器 |
+| **CodeBuddy Code CLI** | `npx spec-superflow@latest install-codebuddy` | 已提供安装器 |
 | **Trae IDE / TRAE Work** | `.trae/skills/`、`~/.trae/skills/` 或上传 zip/.skill | 手动/导入 |
 
 > 共支持 19 个平台，完整安装说明见 [INSTALL.md](INSTALL.md)，支持矩阵见 [docs/platform-matrix.md](docs/platform-matrix.md)。
@@ -154,6 +154,8 @@ npx spec-superflow list          # 或通过 npx 使用
 | `ssf handoff list <dir>` | 列出 handoff 生命周期状态 |
 | `ssf handoff finish <dir> <id>` | 校验 handoff 结果 |
 | `ssf handoff resolve <dir> <id> --decision <decision>` | 记录显式 handoff 决策 |
+| `ssf isolate <dir>` | 实现前强制 git 隔离：在 main/master 时创建 worktree（含递归初始化子模块）或分支，并向 progress 账本写入 cwd 不持续警告 |
+| `ssf finish <dir> [--test-cmd <command>]` | 一键收尾：merge --no-ff 回主干、验证同步、在主干执行验证命令（默认 `npm test`，10 分钟超时），验证通过才删除 worktree 与隔离分支；失败保留 worktree 返回修改 |
 | `ssf execution recommend <dir> ...` | 基于任务量、wave 和工作流列出可用执行方式并给出推荐 |
 | `ssf execution plan <dir> ...` | 在用户确认选择后，为 Full/legacy Hotfix 保存受 guard 保护的执行计划 |
 | `ssf execution show <dir> [--json]` | 查看并校验当前执行计划、wave 与 receipt |
@@ -173,9 +175,11 @@ npx spec-superflow list          # 或通过 npx 使用
 | `ssf install-pi` | 部署到 Pi `.pi/skills/`（无规则目录） |
 | `ssf install-qoder` | 部署到 Qoder `.qoder/` + `.qoder/rules/` |
 
+> **CodeBuddy 安装与 PATH**：`npx spec-superflow@latest install-codebuddy` 无需全局安装即可用——安装器把 skills/rules/hooks 部署到 `~/.codebuddy/`，并在 `~/.codebuddy/spec-superflow/bin/` 生成 `ssf` 命令 shim（Windows 为 `ssf.cmd`/`ssf.ps1`）。默认会把 bin 目录注册到用户 PATH（Windows 写入用户级环境变量，POSIX 追加到 shell 配置文件），新开终端即可直接使用 `ssf` 命令；`--no-path` 跳过 PATH 修改（shim 仍会生成），`--dry-run` 仅预览安装计划不落盘。
+
 ### 版本
 
-- 当前版本：`v1.0.0`
+- 当前版本：`v1.0.1`
 - v1.0：默认按风险走 Quick、direct Hotfix、Tweak 或 Full；小改动只保留边界与验证，复杂改动才进入完整规划、契约和审查
 - 自包含插件，不需要运行时安装 OpenSpec 或 Superpowers
 - 上游来源：[Fission-AI/OpenSpec](https://github.com/Fission-AI/OpenSpec) 和 [obra/superpowers](https://github.com/obra/superpowers)
@@ -230,7 +234,7 @@ execution plan。它位于 `<change>/.superpowers/sdd/execution-plan.json`，不
 候选项和推荐展示给用户。`plan` 或 `revise` 只接受匹配当前 artifact、contract 和 wave 的
 凭据。用户用 `--confirm` 明确确认选择；若选择与推荐不同，必须额外
 传入 `--acknowledge-recommendation` 记录已知风险。Batch Inline 始终串行，绝不冒充并行。
-Quick、direct Hotfix 与 `tweak` 保持轻量例外：不要求 contract、execution plan、wave receipt 或 DP；在边界内验证后持久化 `test_result: pass`。
+Quick、direct Hotfix 与 `tweak` 保持轻量例外：正常完成时不要求 contract、execution plan、wave receipt 或 DP；在边界内验证后持久化 `test_result: pass`。但一旦进入 DP-5 调试升级，任何路径都必须先有当前有效的 execution plan，才可记录失败尝试或持久化升级。
 
 ```bash
 ssf execution recommend changes/my-change \
@@ -339,6 +343,8 @@ spec-superflow 把这两类问题分开处理：先判断改动风险；小改�
 ```
 
 **如何选择：** Quick、direct Hotfix、Tweak 默认保持轻量，只记录范围和验证；Full 与 legacy Hotfix 才要求执行契约、执行计划和 review receipt。风险会说明原因并交给用户选择，不会擅自升级路径。
+
+**DP-5 调试门禁：** 每次失败修复使用 `ssf debug attempt record` 保存唯一且可验证的证据；无论工作流路径，记录前都必须有 current、有效的 execution plan。Wave Review failure 不会计入调试次数。只有当前 execution context 下至少 3 次不同失败尝试，并由用户执行 `ssf debug escalate ... --confirm` 后，才会记录 DP-5。通用 `state set` 不能写入 `dp_5_*`，且不能通过多行值注入这些字段。
 
 ### 快速路径（Quick / Hotfix / Tweak）
 

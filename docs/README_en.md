@@ -103,7 +103,7 @@ gemini extensions update spec-superflow   # upgrade
 |----------|--------|--------|
 | **OpenCode** | `.opencode/plugins/spec-superflow.js` or `.agents/skills -> skills/` | Entry provided |
 | **WorkBuddy** | `npx spec-superflow@latest install-workbuddy` | Installer provided |
-| **CodeBuddy Code CLI** | `ssf install-codebuddy` | Installer provided |
+| **CodeBuddy Code CLI** | `npx spec-superflow@latest install-codebuddy` | Installer provided |
 | **Trae IDE / TRAE Work** | `.trae/skills/`, `~/.trae/skills/`, or zip/.skill upload | Manual/import |
 | **Cline** | `npx spec-superflow@latest install-cline` | Installer provided |
 | **Kiro** | `npx spec-superflow@latest install-kiro` | Installer provided |
@@ -143,14 +143,18 @@ npm install -g spec-superflow
 | `ssf handoff list <dir>` | List handoff lifecycle status |
 | `ssf handoff finish <dir> <id>` | Validate a handoff result |
 | `ssf handoff resolve <dir> <id> --decision <decision>` | Record an explicit handoff decision |
+| `ssf isolate <dir>` | Enforce git isolation before implementation: creates a worktree (with recursive submodule init) or branch when on main/master, and appends a cwd-persistence warning to the progress ledger |
+| `ssf finish <dir> [--test-cmd <command>]` | One-command close-out: merge --no-ff back to the trunk, verify sync, run a verification command on the trunk (default `npm test`, 10-minute timeout), and remove the worktree and isolation branch only after verification passes; on failure the worktree is kept for rework |
 | `ssf install-cursor` | Deploy to `.cursor/` directory |
 | `ssf install-workbuddy` | Deploy to WorkBuddy marketplace and enable skills |
 | `ssf install-codebuddy` | Deploy to `~/.codebuddy/` (CodeBuddy Code CLI) |
 | `ssf uninstall-codebuddy` | Remove spec-superflow from `~/.codebuddy/` (CodeBuddy Code CLI) |
 
+> **CodeBuddy install & PATH**: `npx spec-superflow@latest install-codebuddy` works without a global install — the installer deploys skills/rules/hooks into `~/.codebuddy/` and generates a `ssf` command shim under `~/.codebuddy/spec-superflow/bin/` (`ssf.cmd`/`ssf.ps1` on Windows). By default it registers the bin dir on the user PATH (user-level environment variable on Windows, shell rc file on POSIX), so a new terminal can call `ssf` directly; `--no-path` skips the PATH change (shims are still written), and `--dry-run` only prints the plan without touching the disk.
+
 ### Version
 
-- Current: `v1.0.0`
+- Current: `v1.0.1`
 - v1.0: Quick, direct Hotfix, Tweak, and Full paths keep small changes bounded while reserving planning, contracts, and reviews for complex work.
 - Self-contained — no OpenSpec or Superpowers runtime required
 - Upstream: [Fission-AI/OpenSpec](https://github.com/Fission-AI/OpenSpec), [obra/superpowers](https://github.com/obra/superpowers)
@@ -274,6 +278,8 @@ You: "add authorization to the API"
 
 **Path selection:** Quick, direct Hotfix, and Tweak remain lightweight: record the boundary and verification only. Full and legacy Hotfix require an execution contract, execution plan, and review receipt. Risks are explained for the user to choose from; they do not silently upgrade a path.
 
+**DP-5 debugging gate:** Record every failed fix with `ssf debug attempt record` and distinct, verifiable evidence. Every workflow path must have a current, valid execution plan before it records an attempt. Wave Review failures do not count as debugging attempts. DP-5 is persisted only after at least three failed attempts in that plan context and an explicit `ssf debug escalate ... --confirm`; generic `state set` cannot write or inject `dp_5_*`.
+
 ### Guarded execution plans
 
 For Full/legacy Hotfix, DP-4 is a persisted, current execution plan at
@@ -286,7 +292,7 @@ user records a choice with `--confirm`; `plan` and `revise` require a receipt ma
 artifacts, contract, and waves. A non-recommended choice also requires
 `--acknowledge-recommendation`. Batch Inline remains serial and never claims
 parallel work.
-Quick, direct Hotfix, and Tweak are exempt from contract, execution-plan, and review-receipt gates; they persist `test_result: pass` after bounded verification.
+Quick, direct Hotfix, and Tweak are exempt from contract, execution-plan, and review-receipt gates during their normal bounded path; they persist `test_result: pass` after verification. If they reach DP-5 debugging escalation, they must first establish a current execution plan before recording attempts or persisting DP-5.
 
 ```bash
 ssf execution recommend changes/my-change \

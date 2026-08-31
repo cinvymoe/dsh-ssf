@@ -7,7 +7,7 @@
 - [Fission-AI/OpenSpec](https://github.com/Fission-AI/OpenSpec) — 规划引擎（Schema 验证、Delta Spec、工件解析）
 - [obra/superpowers](https://github.com/obra/superpowers) — 执行纪律（TDD 铁律、SDD、系统化调试、代码审查）
 
-当前发布版本：**v1.0.0**。
+当前发布版本：**v1.0.1**。
 
 ---
 
@@ -408,6 +408,19 @@ CodeBuddy Code CLI 直接从 `~/.codebuddy/skills/` 读取 skill，从 `~/.codeb
 npx spec-superflow@latest install-codebuddy
 ```
 
+安装完成后，安装器会：
+
+- 在 `~/.codebuddy/spec-superflow/bin/` 生成 `ssf`（POSIX）、`ssf.cmd` / `ssf.ps1`（Windows）命令 shim，指向已部署的 `scripts/spec-superflow.mjs`；
+- 默认把 `bin/` 目录加入用户 PATH（幂等，重复安装不会产生重复条目），**新开终端**后即可像 `npm install -g spec-superflow` 一样直接使用 `ssf` 命令。
+
+> **Windows 前置依赖**：SessionStart hook 通过 `bash "<path>"` 执行（`hooks/session-start` 是 bash 脚本），因此 Windows 上需要 `bash` 在 PATH 中——请先安装 **Git for Windows**（自带 Git Bash）或启用 **WSL**，否则 session-start hook 无法运行，`workflow-start` skill 不会被注入。
+
+如果不想修改用户 PATH，用 `--no-path` 跳过（shim 仍会生成，可手动把 `bin/` 加入 PATH）：
+
+```bash
+ssf install-codebuddy --no-path
+```
+
 本地仓库调试：
 
 ```bash
@@ -433,6 +446,7 @@ ssf install-codebuddy --config-dir /path/to/.codebuddy
 ├── spec-superflow/              ← pluginRoot（运行时依赖；${CLAUDE_PLUGIN_ROOT} 目标）
 │   ├── scripts/  docs/  templates/  dist/  hooks/
 │   │   └── session-start        ← 输出 hookSpecificOutput（CodeBuddy 分支）
+│   ├── bin/                     ← ssf 命令 shim（ssf / ssf.cmd / ssf.ps1，已加入用户 PATH）
 │   └── package.json
 ├── skills/                      ← 部署的 skill（路径已重写；其他 skill 保留）
 │   ├── workflow-start/
@@ -458,7 +472,7 @@ npx spec-superflow@latest install-codebuddy
 
 ### 卸载
 
-推荐使用专用卸载命令——它会从 `settings.json` 精确移除 spec-superflow 的 `SessionStart` 条目（保留其他 hook 与所有设置字段），并删除运行时目录、commands、phase-guard 规则与 9 个 skill 目录：
+推荐使用专用卸载命令——它会从 `settings.json` 精确移除 spec-superflow 的 `SessionStart` 条目（保留其他 hook 与所有设置字段），删除运行时目录（含 `bin/` 下的 ssf shim）、commands、phase-guard 规则与 9 个 skill 目录，并从用户 PATH 中移除 `~/.codebuddy/spec-superflow/bin` 条目（Windows 用户环境变量 / POSIX shell 配置文件；其他 PATH 条目保持不变）：
 
 ```bash
 ssf uninstall-codebuddy
@@ -481,7 +495,9 @@ ssf uninstall-codebuddy --config-dir /path/to/.codebuddy
 ### 验证
 
 ```bash
+ssf --version                                               # 新终端中应可执行（若已注册 PATH）
 ls ~/.codebuddy/skills/                                       # 应包含 9 个 spec-superflow skill
+ls ~/.codebuddy/spec-superflow/bin/                           # 应含 ssf / ssf.cmd / ssf.ps1
 ls ~/.codebuddy/spec-superflow/hooks/session-start            # hook 脚本存在
 cat ~/.codebuddy/settings.json | grep -A4 SessionStart        # SessionStart 指向 spec-superflow/hooks/session-start
 grep allowed-tools ~/.codebuddy/commands/ssf/resume.md        # 应为 Bash(node:*)（非 npx）
@@ -849,6 +865,7 @@ ssf execution revise changes/my-change --mode sdd --confirm --reason "need paral
   --wave integration:serial:2.1:foundation
 ssf execution review changes/my-change --wave foundation --base <sha> --head <sha> \
   --report .superpowers/sdd/reviews/foundation.md --verdict pass
+ssf finish changes/my-change
 ```
 
 `--report` 相对于 `<change>` 解析，且必须位于
@@ -856,6 +873,14 @@ ssf execution review changes/my-change --wave foundation --base <sha> --head <sh
 `<change>` Git 工作树中的真实 commit，且 `base` 必须是 `head` 的祖先。
 `<change>/.superpowers/sdd/reviews/` 的目录层级必须是物理、非符号链接目录；
 report 本身必须为普通、非空、非符号链接文件。
+
+`ssf isolate <change-dir>` 创建隔离上下文后会自动递归初始化子模块（存在
+`.gitmodules` 时），并向 `<change>/.superpowers/sdd/progress.md` 追加 cwd 不持续警告。
+`ssf execution review` 在记录 receipt 前校验 head 必须被至少一个非 `main`/`master`
+分支包含——head 只落在主干上会被拒绝且不写 receipt。全部 wave 通过后，
+`ssf finish <change-dir>` 一条命令完成收尾：`merge --no-ff` 回主干、验证主干包含
+隔离分支全部提交、删除 worktree 与隔离分支；`finish` 与 `review` 在 cwd 位于
+worktree 之外时会输出含 worktree 绝对路径的 WARN（不阻断执行）。
 
 每一个 wave 均须有当前 `pass` review receipt，才可启动依赖 wave 或进入 closing；
 修订计划会废止旧 receipt。恢复、切换和手动保存属于 control-plane overlay，不增加第九个状态。

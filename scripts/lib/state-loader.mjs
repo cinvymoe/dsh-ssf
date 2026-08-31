@@ -36,6 +36,8 @@ const BUILTIN_DEFAULTS = {
   dp_4_timestamp: null,
   dp_5_result: null,
   dp_5_timestamp: null,
+  dp_5_decisions: null,
+  dp_5_confirmed: null,
   dp_6_result: null,
   dp_6_timestamp: null,
   dp_7_result: null,
@@ -106,6 +108,8 @@ export function writeState(changeDir, state) {
   lines.push(`dp_4_timestamp: ${state.dp_4_timestamp ?? 'null'}`);
   lines.push(`dp_5_result: ${state.dp_5_result ?? 'null'}`);
   lines.push(`dp_5_timestamp: ${state.dp_5_timestamp ?? 'null'}`);
+  lines.push(`dp_5_decisions: ${state.dp_5_decisions ?? 'null'}`);
+  lines.push(`dp_5_confirmed: ${state.dp_5_confirmed ?? 'null'}`);
   lines.push(`dp_6_result: ${state.dp_6_result ?? 'null'}`);
   lines.push(`dp_6_timestamp: ${state.dp_6_timestamp ?? 'null'}`);
   lines.push(`dp_7_result: ${state.dp_7_result ?? 'null'}`);
@@ -129,8 +133,17 @@ export function updateField(changeDir, field, value) {
  */
 export function rebuildState(changeDir, { computeArtifactsHash, computeContractHash }) {
   const state = readState(changeDir);
+  const oldArtifactsHash = state.artifacts_hash;
   state.artifacts_hash = computeArtifactsHash(changeDir);
   state.contract_hash = computeContractHash(changeDir);
+
+  // artifacts hash 变化时，清空依赖旧 hash 的 plan 字段
+  if (oldArtifactsHash !== state.artifacts_hash) {
+    state.revision = null;
+    state.execution_plan_hash = null;
+    state.execution_plan_revision = null;
+  }
+
   writeState(changeDir, state);
   return state;
 }

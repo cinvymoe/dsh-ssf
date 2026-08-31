@@ -3,13 +3,6 @@ name: release-archivist
 description: Close out a spec-superflow change with verification, summary, and archive readiness. Invoke when implementation is complete, verification is underway, or the user asks for a final wrap-up.
 ---
 
-> **Tool-first rule (`dsh-ssf` plugin):** when this skill instructs running a
-> CLI command through `ssf`, prefer the matching native `ssf_*` tool (e.g.
-> `ssf_state`, `ssf_validate`, `ssf_run`) when the `dsh-ssf` plugin is loaded;
-> fall back to executing the exact same command via the `ssf` CLI only when
-> the native tools are unavailable. Commands, arguments, and output handling
-> stay identical on both paths.
-
 # Release Archivist
 
 Finish a spec-superflow change cleanly with verification evidence. This skill
@@ -49,61 +42,6 @@ Claiming work is complete without verification is dishonesty, not efficiency. Be
 | Build succeeds | Build exit 0 | Linter passing |
 | Bug fixed | Original symptom passes | Code changed |
 | Requirements met | Line-by-line checklist | Tests passing |
-
-## Red Flags - STOP
-
-- Using "should", "probably", "seems to"
-- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
-- About to commit/push/PR without verification
-- Trusting agent success reports
-- Relying on partial verification
-- Thinking "just this once"
-- **ANY wording implying success without having run verification**
-
-## Rationalization Prevention
-
-| Excuse | Reality |
-|--------|---------|
-| "Should work now" | RUN the verification |
-| "I'm confident" | Confidence ≠ evidence |
-| "Just this once" | No exceptions |
-| "Linter passed" | Linter ≠ compiler |
-| "Agent said success" | Verify independently |
-| "I'm tired" | Exhaustion ≠ excuse |
-| "Partial check is enough" | Partial proves nothing |
-| "Different words so rule doesn't apply" | Spirit over letter |
-
-## Key Patterns
-
-**Tests:**
-```
-✅ [Run test command] [See: 34/34 pass] "All tests pass"
-❌ "Should pass now" / "Looks correct"
-```
-
-**Regression tests (TDD Red-Green):**
-```
-✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
-❌ "I've written a regression test" (without red-green verification)
-```
-
-**Build:**
-```
-✅ [Run build] [See: exit 0] "Build passes"
-❌ "Linter passed" (linter doesn't check compilation)
-```
-
-**Requirements:**
-```
-✅ Re-read contract → Create checklist → Verify each → Report gaps or completion
-❌ "Tests pass, phase complete"
-```
-
-**Agent delegation:**
-```
-✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
-❌ Trust agent report
-```
 
 ## Full/Legacy Verification Steps
 
@@ -175,11 +113,26 @@ run `ssf state transition <change-dir> closing`.
 `executing → closing` is the final action: once it succeeds, select no next
 skill and run no recovery scans.
 
-终态转换（`closing`/`abandoned`，即上方命令）若存在 `worktree` 指针：先做分叉前置检查——分叉则以退出码 1 拒绝并提示先将 worktree 副本工件同步回主检出；通过后持久化状态，再自动执行 `git worktree remove --force <worktree>` 并将 `worktree` 字段置 `null`。清理失败仅打印警告与手动清理命令（`git worktree remove --force <path>`），不回滚已持久化的状态（exit 0, warn-only）；若转换命令从 worktree 副本内部发起，则跳过自动清理并警告提示回主检出执行 `git worktree remove --force <worktree>`。隔离分支在 `remove` 后仍保留，由用户按需手动删除（`git branch -d <name>`）。`ssf state transition` 与 `ssf execution review` 的副本分叉警告为 warn-only（仅 stderr，不改退出码）。
+## Physical Archive (Full/legacy Hotfix only)
+
+After the `executing → closing` transition succeeds, complete the physical
+archive with:
+
+```bash
+ssf finish <change-dir> [--test-cmd <command>]
+```
+
+`ssf finish` merges the isolation branch back to the trunk (`--no-ff`),
+verifies the trunk (default `npm test`, `--test-cmd` override, 10-minute
+timeout), then removes the worktree and the isolation branch. For submodule
+projects it auto-falls-back to `--force` worktree removal; if that also
+fails it prints the merge commit and manual cleanup commands. Quick /
+direct Hotfix / tweak / lightweight skip this step — their `closing` is
+already the physical terminal.
 
 ## Lightweight Closure (Quick/direct Hotfix/tweak)
 
-Quick and direct Hotfix use a concise verification summary: changed files, focused command, result, and persisted `test_result: pass`. Quick runs targeted tests or syntax/static checks; direct Hotfix proves the original symptom regression. Do not require a contract, execution plan, review receipt, DP-6, or DP-7. A legacy Hotfix remains on the full contract/DP/review closure path. Tweak verifies file integrity and also persists `test_result: pass`.
+Quick and direct Hotfix use a concise verification summary: changed files, focused command, result, and persisted `test_result: pass`. Quick runs targeted tests or syntax/static checks; direct Hotfix proves the original symptom regression. Do not require a contract, execution plan, review receipt, DP-6, or DP-7. A legacy Hotfix remains on the full contract/DP/review closure path. Tweak verifies file integrity and also persists `test_result: pass`. Closing is the physical terminal for lightweight paths — no `ssf finish` step is needed.
 
 ## Exception Handling
 
@@ -225,5 +178,8 @@ persisted `closing` state and `abandoned` are terminal.
 
 - Current stage: successfully persisted `closing` or `abandoned`.
 - Completed / blocker: `<persisted terminal outcome>`.
-- Next stage: `none`.
-- Entry condition: no further transition exists.
+- Next stage: for Full/legacy Hotfix, the physical archive via `ssf finish
+  <change-dir>` (worktree merge + cleanup); once it succeeds, next = none.
+  For Quick / direct Hotfix / tweak / lightweight, `none` — closing is the
+  physical terminal.
+- Entry condition: no further state transition exists.

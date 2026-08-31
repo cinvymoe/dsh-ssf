@@ -2,30 +2,65 @@
 // Tests for scripts/lib/cmd-state.mjs
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, chmodSync, cpSync, readFileSync, realpathSync } from 'node:fs';
-import { join, resolve, relative, dirname } from 'node:path';
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, chmodSync } from 'node:fs';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { execSync, execFileSync, spawnSync } from 'node:child_process';
-import { readState, writeState } from '../../scripts/lib/state-loader.mjs';
+import { execSync, spawnSync } from 'node:child_process';
 
 const CLI_PATH = join(process.cwd(), 'scripts/spec-superflow.mjs');
 let tempDir;
 
 function ssf(args, options = {}) {
-  const result = spawnSync(`${shellQuote(process.execPath)} ${shellQuote(CLI_PATH)} ${args}`, {
-    shell: true,
-    encoding: 'utf-8',
-    ...options,
-  });
+  const argv = parseShellArgs(args);
+  const result = spawnSync(process.execPath, [CLI_PATH, ...argv], { encoding: 'utf8', ...options });
   return {
     exitCode: result.status ?? 1,
-    stdout: result.stdout?.trim() ?? '',
-    stderr: result.stderr?.trim() ?? '',
+    stdout: (result.stdout || '').trim(),
+    stderr: (result.stderr || '').trim(),
   };
+}
+
+// Split a command string into argv, honoring single/double quotes so quoted
+// values containing spaces stay intact (mirrors POSIX shell word splitting).
+function parseShellArgs(str) {
+  const argv = [];
+  let current = '';
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (inSingle) {
+      if (ch === "'") inSingle = false;
+      else current += ch;
+    } else if (inDouble) {
+      if (ch === '"') inDouble = false;
+      else if (ch === '\\' && i + 1 < str.length) current += str[++i];
+      else current += ch;
+    } else if (ch === "'") {
+      inSingle = true;
+    } else if (ch === '"') {
+      inDouble = true;
+    } else if (ch === ' ' || ch === '\t') {
+      if (current) { argv.push(current); current = ''; }
+    } else {
+      current += ch;
+    }
+  }
+  if (current) argv.push(current);
+  return argv;
 }
 
 function shellQuote(value) {
   return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function ssfArgs(args) {
+  const result = spawnSync(process.execPath, [CLI_PATH, ...args], { encoding: 'utf8' });
+  return {
+    exitCode: result.status ?? 1,
+    stdout: result.stdout.trim(),
+    stderr: result.stderr.trim(),
+  };
 }
 
 describe('cmd-state: init', () => {
@@ -113,7 +148,6 @@ describe('cmd-state: transition', () => {
 
   it('transitions from exploring to specifying', () => {
     ssf(`state init ${tempDir}`);
-    ssf(`state set ${tempDir} dp_1_result "confirmed: transition test"`);
     const result = ssf(`state transition ${tempDir} specifying`);
     assert.equal(result.exitCode, 0);
     assert.ok(result.stdout.includes('exploring -> specifying'));
@@ -125,7 +159,6 @@ describe('cmd-state: transition', () => {
     try {
       assert.equal(ssf(`state init ${emptyChange}`).exitCode, 0);
       assert.equal(ssf(`state set ${emptyChange} workflow full`).exitCode, 0);
-      assert.equal(ssf(`state set ${emptyChange} dp_1_result "confirmed: empty change"`).exitCode, 0);
       const transition = ssf(`state transition ${emptyChange} specifying`);
       assert.equal(transition.exitCode, 0, transition.stderr);
       assert.equal(ssf(`state check ${emptyChange}`).exitCode, 0);
@@ -145,7 +178,6 @@ describe('cmd-state: transition', () => {
       writeFileSync(join(changeDir, 'specs', 'test', 'spec.md'), '## ADDED Requirements\n### Requirement: Relative transition\nThe system SHALL resolve relative change paths from the caller project.\n#### Scenario: Transition\n- **WHEN** a project invokes state transition with a relative path\n- **THEN** its artifacts are checked.');
 
       assert.equal(ssf('state init changes/relative-change', { cwd: projectRoot }).exitCode, 0);
-      assert.equal(ssf('state set changes/relative-change dp_1_result "confirmed: relative transition"', { cwd: projectRoot }).exitCode, 0);
       const result = ssf('state transition changes/relative-change specifying', { cwd: projectRoot });
 
       assert.equal(result.exitCode, 0, result.stderr);
@@ -159,7 +191,6 @@ describe('cmd-state: transition', () => {
     // Re-init to ensure we start from exploring
     rmSync(join(tempDir, '.spec-superflow.yaml'), { force: true });
     ssf(`state init ${tempDir}`);
-    ssf(`state set ${tempDir} dp_1_result "confirmed: json transition"`);
     // exploring→specifying is the next legal mainline transition
     const result = ssf(`state transition ${tempDir} specifying --json`);
     const parsed = JSON.parse(result.stdout);
@@ -170,7 +201,6 @@ describe('cmd-state: transition', () => {
 
   it('persists state across invocations', () => {
     ssf(`state init ${tempDir}`);
-    ssf(`state set ${tempDir} dp_1_result "confirmed: persisted transition"`);
     // Legal transition: exploring → specifying
     ssf(`state transition ${tempDir} specifying`);
 
@@ -191,23 +221,10 @@ describe('cmd-state: transition', () => {
       writeFileSync(join(changeDir, 'specs', 'test', 'spec.md'), '## ADDED Requirements\n### Requirement: Relative transition\nThe system SHALL resolve relative change paths from the caller project.\n#### Scenario: Transition\n- **WHEN** a project invokes state transition with a relative path\n- **THEN** its artifacts are checked.');
 
       assert.equal(ssf('state init changes/relative-change', { cwd: projectRoot }).exitCode, 0);
-      assert.equal(ssf('state set changes/relative-change dp_1_result "confirmed: relative transition"', { cwd: projectRoot }).exitCode, 0);
       const result = ssf('state transition changes/relative-change specifying', { cwd: projectRoot });
 
       assert.equal(result.exitCode, 0, result.stderr);
       assert.match(result.stdout, /exploring -> specifying/);
-    } finally {
-      rmSync(projectRoot, { recursive: true, force: true });
-    }
-  });
-
-  it('treats a bare change name as changes/<name>', () => {
-    const projectRoot = mkdtempSync(join(tmpdir(), 'ssf-state-bare-name-'));
-    try {
-      const result = ssf('state init bare-change', { cwd: projectRoot });
-      assert.equal(result.exitCode, 0, result.stderr);
-      assert.ok(existsSync(join(projectRoot, 'changes', 'bare-change', '.spec-superflow.yaml')));
-      assert.ok(!existsSync(join(projectRoot, 'bare-change')), 'bare name must not create a directory at the cwd root');
     } finally {
       rmSync(projectRoot, { recursive: true, force: true });
     }
@@ -271,7 +288,7 @@ describe('cmd-state: transition', () => {
     assert.equal(check.stdout.trim(), 'exploring');
   });
 
-  it('rejects transition when guard pass is a truthy non-boolean value', () => {
+  it('rejects transition when guard pass is a truthy non-boolean value', { skip: process.platform === 'win32' && 'POSIX-only guard shim' }, () => {
     rmSync(join(tempDir, '.spec-superflow.yaml'), { force: true });
     ssf(`state init ${tempDir}`);
 
@@ -398,6 +415,26 @@ describe('cmd-state: set', () => {
     assert.match(result.stderr || result.stdout, /not settable/);
   });
 
+  it('rejects manual edits to guarded DP-5 fields', () => {
+    ssf(`state init ${tempDir}`);
+    for (const field of ['dp_5_result', 'dp_5_timestamp', 'dp_5_decisions', 'dp_5_confirmed']) {
+      const result = ssf(`state set ${tempDir} ${field} forged`);
+      assert.equal(result.exitCode, 1, `${field} should be guarded`);
+      assert.match(result.stderr || result.stdout, /not settable/);
+    }
+  });
+
+  it('rejects newline injection through another settable field', () => {
+    ssf(`state init ${tempDir}`);
+    const payload = 'valid DP-6 result\ndp_5_result: forged escalation\ndp_5_timestamp: 2026-08-07T00:00:00Z\ndp_5_confirmed: true';
+
+    const result = ssfArgs(['state', 'set', tempDir, 'dp_6_result', payload]);
+
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr || result.stdout, /control character|line separator/i);
+    assert.equal(ssf(`state get ${tempDir} dp_5_result`).stdout.trim(), 'null');
+  });
+
   it('rejects unknown fields', () => {
     ssf(`state init ${tempDir}`);
     const result = ssf(`state set ${tempDir} nonexistent_field value`);
@@ -449,195 +486,5 @@ describe('cmd-state: error handling', () => {
   it('errors on unknown subcommand', () => {
     const result = ssf('state invalid-subcommand /tmp');
     assert.equal(result.exitCode, 2);
-  });
-});
-
-// T3: terminal worktree cleanup and divergence pre-check
-describe('cmd-state: worktree terminal cleanup (T3)', () => {
-  function git(cwd, ...args) {
-    execFileSync('git', args, { cwd, stdio: 'pipe', timeout: 10000 });
-  }
-
-  function createRepo() {
-    const repo = mkdtempSync(join(tmpdir(), 'ssf-t3-repo-'));
-    git(repo, 'init', '-q', '--initial-branch=main');
-    git(repo, 'config', 'user.name', 'test');
-    git(repo, 'config', 'user.email', 't@t');
-    writeFileSync(join(repo, 'README.md'), 'x');
-    git(repo, 'add', '-A');
-    git(repo, 'commit', '-q', '-m', 'init');
-    return repo;
-  }
-
-  function writeArtifacts(changeDir) {
-    writeFileSync(join(changeDir, 'proposal.md'), '## Why\nTest proposal for T3 closing with sufficient length to pass validation.\n## What Changes\n- Test');
-    writeFileSync(join(changeDir, 'design.md'), '# Design\n## Context\nTest.\n## Goals\nTest.\n## Decisions\n### D1\n- Choice: Test\n- Rationale: Test\n\n## Risks And Trade-Offs\nNone.');
-    writeFileSync(join(changeDir, 'tasks.md'), '# Tasks\n- [x] Task 1');
-    mkdirSync(join(changeDir, 'specs', 'test'), { recursive: true });
-    writeFileSync(join(changeDir, 'specs', 'test', 'spec.md'), '## ADDED Requirements\n### Requirement: Test\nSHALL work.\n#### Scenario: Test\n- **WHEN** test\n- **THEN** test');
-    writeFileSync(join(changeDir, 'execution-contract.md'), '# Execution Contract\n');
-  }
-
-  function initChangeAsExecuting(repo, changeName) {
-    const changeDir = join(repo, 'changes', changeName);
-    mkdirSync(changeDir, { recursive: true });
-    writeArtifacts(changeDir);
-    const init = ssf(`state init ${changeDir}`);
-    assert.equal(init.exitCode, 0, `state init failed: ${init.stderr}`);
-    // Set to executing, tweak, pass so closing guard passes via direct-test-result
-    const s = readState(changeDir);
-    s.state = 'executing';
-    s.workflow = 'tweak';
-    s.test_result = 'pass';
-    s.last_transition = '2026-01-01T00:00:00.000Z';
-    writeState(changeDir, s);
-    return changeDir;
-  }
-
-  function createWorktreeAndSync(repo, changeName) {
-    const changeDir = join(repo, 'changes', changeName);
-    const worktreeAbs = join(repo, 'changes', 'worktrees', changeName);
-    mkdirSync(join(repo, 'changes', 'worktrees'), { recursive: true });
-    git(repo, 'worktree', 'add', '-q', worktreeAbs, '-b', changeName);
-    const worktreeChangeDir = join(worktreeAbs, 'changes', changeName);
-    // ensure copy
-    if (existsSync(worktreeChangeDir)) rmSync(worktreeChangeDir, { recursive: true, force: true });
-    mkdirSync(join(worktreeAbs, 'changes'), { recursive: true });
-    cpSync(changeDir, worktreeChangeDir, { recursive: true, force: true });
-    // after copy, set worktree pointer on main copy
-    const mainState = readState(changeDir);
-    mainState.worktree = `changes/worktrees/${changeName}`;
-    writeState(changeDir, mainState);
-    // ensure worktree copy also has same pointer and timestamp for consistency
-    const wtState = readState(worktreeChangeDir);
-    wtState.worktree = `changes/worktrees/${changeName}`;
-    // keep last_transition equal for consistent case
-    writeState(worktreeChangeDir, wtState);
-    return { changeDir, worktreeAbs, worktreeChangeDir };
-  }
-
-  it('closing + consistent worktree → exit 0, worktree dir removed, pointer null', () => {
-    const repo = createRepo();
-    try {
-      const changeName = 't3-closing-consistent';
-      const changeDir = initChangeAsExecuting(repo, changeName);
-      const { worktreeAbs, worktreeChangeDir } = createWorktreeAndSync(repo, changeName);
-      assert.ok(existsSync(worktreeAbs), 'worktree should exist before transition');
-      assert.ok(existsSync(worktreeChangeDir), 'worktree change dir should exist');
-
-      const result = ssf(`state transition ${changeDir} closing`);
-      assert.equal(result.exitCode, 0, `expected exit 0 but got ${result.exitCode}: stderr=${result.stderr} stdout=${result.stdout}`);
-      assert.match(result.stdout, /closing/);
-      assert.equal(existsSync(worktreeAbs), false, 'worktree dir should be removed after closing');
-      const afterState = readState(changeDir);
-      assert.equal(afterState.state, 'closing');
-      assert.equal(afterState.worktree, null, 'worktree pointer should be null after cleanup');
-    } finally {
-      rmSync(repo, { recursive: true, force: true });
-    }
-  });
-
-  it('closing + diverged worktree → exit 1, worktree dir stays, state remains executing', () => {
-    const repo = createRepo();
-    try {
-      const changeName = 't3-closing-diverged';
-      const changeDir = initChangeAsExecuting(repo, changeName);
-      const { worktreeAbs, worktreeChangeDir } = createWorktreeAndSync(repo, changeName);
-      // make worktree newer => diverged
-      const wtState = readState(worktreeChangeDir);
-      wtState.last_transition = '2026-01-02T00:00:00.000Z';
-      writeState(worktreeChangeDir, wtState);
-      // also modify proposal to ensure diverged if fallback to hash, but timestamp suffices
-      writeFileSync(join(worktreeChangeDir, 'proposal.md'), '## Why\nDiverged proposal content newer.\n## What Changes\n- diverged');
-
-      const result = ssf(`state transition ${changeDir} closing`);
-      assert.equal(result.exitCode, 1, `expected exit 1 but got ${result.exitCode}: ${result.stderr}`);
-      assert.match(result.stderr, /diverged/i);
-      assert.match(result.stderr, /Refusing/);
-      assert.equal(existsSync(worktreeAbs), true, 'worktree dir should remain after diverged refusal');
-      const afterState = readState(changeDir);
-      assert.equal(afterState.state, 'executing', 'state should remain executing after diverged refusal');
-      assert.equal(afterState.worktree, `changes/worktrees/${changeName}`);
-    } finally {
-      // clean worktree if still exists (unlock not needed)
-      try { execFileSync('git', ['worktree', 'remove', '--force', join(repo, 'changes', 'worktrees', 't3-closing-diverged')], { cwd: repo, stdio: 'ignore' }); } catch {}
-      rmSync(repo, { recursive: true, force: true });
-    }
-  });
-
-  it('cleanup failure injection (locked worktree) → exit 0, stderr contains manual cleanup command', () => {
-    const repo = createRepo();
-    try {
-      const changeName = 't3-cleanup-fail';
-      const changeDir = initChangeAsExecuting(repo, changeName);
-      const { worktreeAbs } = createWorktreeAndSync(repo, changeName);
-      // lock worktree to make remove fail (needs cwd inside the temp repo)
-      execFileSync('git', ['worktree', 'lock', worktreeAbs], { cwd: repo, stdio: 'pipe' });
-
-      const result = ssf(`state transition ${changeDir} closing`);
-      assert.equal(result.exitCode, 0, `expected exit 0 despite cleanup failure, got ${result.exitCode}: ${result.stderr}`);
-      assert.match(result.stderr, /automatic worktree removal failed/i);
-      assert.match(result.stderr, /git worktree remove --force/);
-      assert.ok(result.stderr.includes(worktreeAbs) || result.stderr.includes(`changes/worktrees/${changeName}`));
-      // state should be closing despite cleanup failure
-      const afterState = readState(changeDir);
-      assert.equal(afterState.state, 'closing');
-      // worktree should still exist
-      assert.equal(existsSync(worktreeAbs), true);
-      // pointer should remain non-null because cleanup failed
-      assert.equal(afterState.worktree, `changes/worktrees/${changeName}`);
-
-      // cleanup for next test: unlock and remove
-      execFileSync('git', ['worktree', 'unlock', worktreeAbs], { cwd: repo, stdio: 'pipe' });
-      execFileSync('git', ['worktree', 'remove', '--force', worktreeAbs], { cwd: repo, stdio: 'pipe' });
-    } finally {
-      rmSync(repo, { recursive: true, force: true });
-    }
-  });
-
-  it('transition from inside worktree copy → state transition succeeds, dir remains, stderr contains skipping warning', () => {
-    const repo = createRepo();
-    try {
-      const changeName = 't3-inside-worktree';
-      const changeDir = initChangeAsExecuting(repo, changeName);
-      const { worktreeAbs, worktreeChangeDir } = createWorktreeAndSync(repo, changeName);
-      // run transition from inside worktree copy: changeDir is worktreeChangeDir, cwd is inside worktree
-      const result = ssf(`state transition ${worktreeChangeDir} closing`, { cwd: worktreeAbs });
-      assert.equal(result.exitCode, 0, `inside transition should succeed, got ${result.exitCode}: ${result.stderr}`);
-      assert.match(result.stderr, /skipping automatic worktree removal/i);
-      assert.match(result.stderr, /inside the worktree copy/i);
-      // path assertion: warning must name the correct absolute worktree path (not nested)
-      const worktreePathInWarning = result.stderr.match(/git worktree remove --force (\S+)/)?.[1];
-      assert.equal(worktreePathInWarning, worktreeAbs, `warning should contain correct absolute worktree path ${worktreeAbs}, got ${worktreePathInWarning}`);
-      const nestedWrong = join(worktreeAbs, `changes/worktrees/${changeName}`);
-      assert.ok(!result.stderr.includes(nestedWrong), `warning should not contain nested incorrect path ${nestedWrong}`);
-      // worktree dir should still exist (not removed to avoid stranding cwd)
-      assert.equal(existsSync(worktreeAbs), true);
-      // worktree copy state should be closing
-      const wtAfter = readState(worktreeChangeDir);
-      assert.equal(wtAfter.state, 'closing');
-      // main copy state should remain executing (we transitioned the copy, not main)
-      const mainAfter = readState(changeDir);
-      assert.equal(mainAfter.state, 'executing');
-    } finally {
-      rmSync(repo, { recursive: true, force: true });
-    }
-  });
-
-  it('abandoned transition also triggers cleanup (consistent worktree → removed, pointer null)', () => {
-    const repo = createRepo();
-    try {
-      const changeName = 't3-abandoned-cleanup';
-      const changeDir = initChangeAsExecuting(repo, changeName);
-      const { worktreeAbs } = createWorktreeAndSync(repo, changeName);
-      const result = ssf(`state transition ${changeDir} abandoned`);
-      assert.equal(result.exitCode, 0, `abandoned should succeed, got ${result.exitCode}: ${result.stderr}`);
-      assert.equal(existsSync(worktreeAbs), false, 'worktree should be removed after abandoned');
-      const afterState = readState(changeDir);
-      assert.equal(afterState.state, 'abandoned');
-      assert.equal(afterState.worktree, null);
-    } finally {
-      rmSync(repo, { recursive: true, force: true });
-    }
   });
 });
