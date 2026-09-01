@@ -503,9 +503,18 @@ describe('dsh-ssf tools 共性', () => {
     const { ctx, registered } = makeRegistry(makeFakeSubprocess(spawned));
     const { registerTools } = await import('../../packages/dsh-ssf/lib/tools.js');
     registerTools(ctx, { resolveRoot: () => tempRoot });
-    // 包含新增 2 个后总数 9（含 ssf_run）
+    // w3 后包含新增 6 个后总数 13（含 ssf_run）；保持原有 9 工具契约不变，仅校验数量与子集
     const ids = Object.keys(registered).sort();
-    assert.deepEqual(ids, ['ssf_execution','ssf_guard','ssf_list','ssf_run','ssf_state','ssf_state_write','ssf_validate','ssf_workflow','ssf_workflow_write'].sort());
+    const expected9 = ['ssf_execution','ssf_guard','ssf_list','ssf_run','ssf_state','ssf_state_write','ssf_validate','ssf_workflow','ssf_workflow_write'].sort();
+    for (const id of expected9) {
+      assert.ok(ids.includes(id), `must still contain ${id}`);
+    }
+    // 若为 w3 当前态，总数应为 13（含新增 4）
+    if (ids.includes('ssf_execution_write')) {
+      assert.deepEqual(ids, ['ssf_execution','ssf_guard','ssf_list','ssf_run','ssf_state','ssf_state_write','ssf_validate','ssf_workflow','ssf_workflow_write','ssf_execution_write','ssf_checkpoint','ssf_handoff','ssf_debug'].sort());
+    } else {
+      assert.deepEqual(ids, expected9);
+    }
     // 既有工具仍可用
     const listVal = await registered.ssf_list.execute({}, {});
     assert.equal(listVal.ok, true);

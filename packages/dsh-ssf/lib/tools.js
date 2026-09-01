@@ -31,6 +31,10 @@ const TOOL_IDS = [
   'ssf_guard',
   'ssf_state_write',
   'ssf_workflow_write',
+  'ssf_execution_write',
+  'ssf_checkpoint',
+  'ssf_handoff',
+  'ssf_debug',
 ];
 
 /** Envelope for the ssf_* structured outputs (ok + domain payload). */
@@ -95,6 +99,10 @@ const OUTPUTS = {
   ssf_guard: envelopeSchema('guard'),
   ssf_state_write: WRITE_OUTPUT,
   ssf_workflow_write: WRITE_OUTPUT,
+  ssf_execution_write: WRITE_OUTPUT,
+  ssf_checkpoint: WRITE_OUTPUT,
+  ssf_handoff: WRITE_OUTPUT,
+  ssf_debug: WRITE_OUTPUT,
 };
 
 const DESCRIPTIONS = {
@@ -106,6 +114,10 @@ const DESCRIPTIONS = {
   ssf_guard: 'Run the phase-transition guard check for one change (dp gates and artifact conditions).',
   ssf_state_write: 'Write state machine fields for a spec-superflow change (init/set/transition/rebuild) via the native CLI.',
   ssf_workflow_write: 'Write workflow selection for a spec-superflow change (recommend/select/accept/evidence/escalate) via the native CLI.',
+  ssf_execution_write: 'Write execution plan for a spec-superflow change (recommend/plan/revise/resync/review) via the native CLI.',
+  ssf_checkpoint: 'Manage checkpoints for a spec-superflow change (save/list/show) via the native CLI.',
+  ssf_handoff: 'Manage handoff contracts for a spec-superflow change (create/list/finish/resolve) via the native CLI.',
+  ssf_debug: 'Manage debugging attempts for a spec-superflow change (record_attempt/show_attempts/escalate) via the native CLI.',
 };
 
 /**
@@ -170,6 +182,15 @@ export function registerTools(ctx, { resolveRoot, onBind }) {
   const REQUEST_KIND_ENUM = ['standard', 'incident'];
   const MODE_ENUM = ['full', 'hotfix', 'tweak', 'quick', 'lightweight'];
   const VERIFICATION_ENUM = ['tdd', 'new-test', 'bounded'];
+  const EXECUTION_WRITE_ACTIONS = ['recommend', 'plan', 'revise', 'resync', 'review'];
+  const EXECUTION_MODE_ENUM = ['sdd', 'inline', 'batch-inline'];
+  const EXECUTION_VERDICT_ENUM = ['pass', 'fail'];
+  const CHECKPOINT_ACTIONS = ['save', 'list', 'show'];
+  const HANDOFF_ACTIONS = ['create', 'list', 'finish', 'resolve'];
+  const HANDOFF_TYPE_ENUM = ['prototype', 'research', 'experiment'];
+  const HANDOFF_DECISION_ENUM = ['accept', 'reject', 'defer'];
+  const DEBUG_ACTIONS = ['record_attempt', 'show_attempts', 'escalate'];
+  const DEBUG_DECISION_ENUM = ['continue', 'abandon'];
 
   function assertEnum(value, allowed, fieldName) {
     if (value !== undefined && value !== null && !allowed.includes(value)) {
@@ -181,6 +202,10 @@ export function registerTools(ctx, { resolveRoot, onBind }) {
     const isList = id === 'ssf_list';
     const isStateWrite = id === 'ssf_state_write';
     const isWorkflowWrite = id === 'ssf_workflow_write';
+    const isExecutionWrite = id === 'ssf_execution_write';
+    const isCheckpoint = id === 'ssf_checkpoint';
+    const isHandoff = id === 'ssf_handoff';
+    const isDebug = id === 'ssf_debug';
 
     if (isStateWrite) {
       ctx.tools.register(defineTool({
@@ -344,6 +369,264 @@ export function registerTools(ctx, { resolveRoot, onBind }) {
             cliArgs = ['workflow', 'escalate', dir, '--reason', args.reason];
           } else {
             throw new Error(`ssf_workflow_write: invalid action "${action}"`);
+          }
+          return await runner.runSsf({ args: cliArgs, changeDir: args.changeDir, json: true, exec });
+        },
+      }));
+      continue;
+    }
+
+    if (isExecutionWrite) {
+      ctx.tools.register(defineTool({
+        name: id,
+        description: DESCRIPTIONS[id],
+        parameters: {
+          changeDir: { type: 'string', required: true, description: 'Change directory name, relative to the workspace changes/ directory.' },
+          action: { type: 'string', required: true, enum: EXECUTION_WRITE_ACTIONS, description: 'Execution action to perform.' },
+          mode: { type: 'string', enum: EXECUTION_MODE_ENUM, description: 'Execution mode for plan/revise.' },
+          reason: { type: 'string', description: 'Reason for plan/revise/resync.' },
+          waves: { type: 'array', items: { type: 'string' }, description: 'Waves, each as id:strategy:tasks[:depends].' },
+          acknowledgeRecommendation: { type: 'boolean', description: 'Whether to acknowledge non-recommended mode selection.' },
+          wave: { type: 'string', description: 'Wave id for review.' },
+          base: { type: 'string', description: 'Base commit sha for review.' },
+          head: { type: 'string', description: 'Head commit sha for review.' },
+          report: { type: 'string', description: 'Report path for review.' },
+          verdict: { type: 'string', enum: EXECUTION_VERDICT_ENUM, description: 'Verdict for review.' },
+        },
+        output: {
+          schema: OUTPUTS[id],
+          render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+        },
+        async execute(args, exec) {
+          const root = resolveRoot();
+          resolveChangePath(root, args.changeDir);
+          const action = args.action;
+          if (action === undefined || action === null) {
+            throw new Error('ssf_execution_write: action is required');
+          }
+          if (!EXECUTION_WRITE_ACTIONS.includes(action)) {
+            throw new Error(`ssf_execution_write: invalid action "${action}"`);
+          }
+          assertEnum(args.mode, EXECUTION_MODE_ENUM, 'mode');
+          assertEnum(args.verdict, EXECUTION_VERDICT_ENUM, 'verdict');
+          if (action === 'plan') {
+            if (!args.mode || !args.reason || !Array.isArray(args.waves) || args.waves.length === 0) {
+              throw new Error('ssf_execution_write plan: mode, reason and waves are required');
+            }
+          }
+          if (action === 'revise') {
+            if (!args.mode || !args.reason || !Array.isArray(args.waves) || args.waves.length === 0) {
+              throw new Error('ssf_execution_write revise: mode, reason and waves are required');
+            }
+          }
+          if (action === 'resync') {
+            if (!args.reason) {
+              throw new Error('ssf_execution_write resync: reason is required');
+            }
+          }
+          if (action === 'review') {
+            if (!args.wave || !args.base || !args.head || !args.report || !args.verdict) {
+              throw new Error('ssf_execution_write review: wave, base, head, report and verdict are required');
+            }
+          }
+          const dir = `changes/${args.changeDir}`;
+          let cliArgs;
+          if (action === 'recommend') {
+            cliArgs = ['execution', 'recommend', dir];
+            if (Array.isArray(args.waves)) {
+              for (const w of args.waves) {
+                cliArgs.push('--wave', w);
+              }
+            }
+          } else if (action === 'plan') {
+            cliArgs = ['execution', 'plan', dir, '--mode', args.mode, '--confirm', '--reason', args.reason];
+            for (const w of args.waves) {
+              cliArgs.push('--wave', w);
+            }
+            if (args.acknowledgeRecommendation === true) cliArgs.push('--acknowledge-recommendation');
+          } else if (action === 'revise') {
+            cliArgs = ['execution', 'revise', dir, '--mode', args.mode, '--confirm', '--reason', args.reason];
+            for (const w of args.waves) {
+              cliArgs.push('--wave', w);
+            }
+            if (args.acknowledgeRecommendation === true) cliArgs.push('--acknowledge-recommendation');
+          } else if (action === 'resync') {
+            cliArgs = ['execution', 'resync', dir, '--confirm', '--reason', args.reason];
+          } else if (action === 'review') {
+            cliArgs = ['execution', 'review', dir, '--wave', args.wave, '--base', args.base, '--head', args.head, '--report', args.report, '--verdict', args.verdict];
+          } else {
+            throw new Error(`ssf_execution_write: invalid action "${action}"`);
+          }
+          return await runner.runSsf({ args: cliArgs, changeDir: args.changeDir, json: true, exec });
+        },
+      }));
+      continue;
+    }
+
+    if (isCheckpoint) {
+      ctx.tools.register(defineTool({
+        name: id,
+        description: DESCRIPTIONS[id],
+        parameters: {
+          changeDir: { type: 'string', required: true, description: 'Change directory name, relative to the workspace changes/ directory.' },
+          action: { type: 'string', required: true, enum: CHECKPOINT_ACTIONS, description: 'Checkpoint action to perform.' },
+          task: { type: 'string', description: 'Task id for save.' },
+          next: { type: 'string', description: 'Next step for save.' },
+          id: { type: 'string', description: 'Checkpoint id for show.' },
+        },
+        output: {
+          schema: OUTPUTS[id],
+          render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+        },
+        async execute(args, exec) {
+          const root = resolveRoot();
+          resolveChangePath(root, args.changeDir);
+          const action = args.action;
+          if (action === undefined || action === null) {
+            throw new Error('ssf_checkpoint: action is required');
+          }
+          if (!CHECKPOINT_ACTIONS.includes(action)) {
+            throw new Error(`ssf_checkpoint: invalid action "${action}"`);
+          }
+          if (action === 'save') {
+            if (!args.task || !args.next) {
+              throw new Error('ssf_checkpoint save: task and next are required');
+            }
+          }
+          if (action === 'show') {
+            if (!args.id) {
+              throw new Error('ssf_checkpoint show: id is required');
+            }
+          }
+          const dir = `changes/${args.changeDir}`;
+          let cliArgs;
+          if (action === 'save') {
+            cliArgs = ['checkpoint', 'save', dir, '--task', args.task, '--next', args.next];
+          } else if (action === 'list') {
+            cliArgs = ['checkpoint', 'list', dir];
+          } else if (action === 'show') {
+            cliArgs = ['checkpoint', 'show', dir, args.id];
+          } else {
+            throw new Error(`ssf_checkpoint: invalid action "${action}"`);
+          }
+          return await runner.runSsf({ args: cliArgs, changeDir: args.changeDir, json: true, exec });
+        },
+      }));
+      continue;
+    }
+
+    if (isHandoff) {
+      ctx.tools.register(defineTool({
+        name: id,
+        description: DESCRIPTIONS[id],
+        parameters: {
+          changeDir: { type: 'string', required: true, description: 'Change directory name, relative to the workspace changes/ directory.' },
+          action: { type: 'string', required: true, enum: HANDOFF_ACTIONS, description: 'Handoff action to perform.' },
+          type: { type: 'string', enum: HANDOFF_TYPE_ENUM, description: 'Handoff type for create.' },
+          objective: { type: 'string', description: 'Objective for create.' },
+          expectedOutput: { type: 'string', description: 'Expected output for create.' },
+          acceptance: { type: 'string', description: 'Acceptance for create.' },
+          id: { type: 'string', description: 'Handoff id for finish/resolve.' },
+          decision: { type: 'string', enum: HANDOFF_DECISION_ENUM, description: 'Decision for resolve.' },
+        },
+        output: {
+          schema: OUTPUTS[id],
+          render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+        },
+        async execute(args, exec) {
+          const root = resolveRoot();
+          resolveChangePath(root, args.changeDir);
+          const action = args.action;
+          if (action === undefined || action === null) {
+            throw new Error('ssf_handoff: action is required');
+          }
+          if (!HANDOFF_ACTIONS.includes(action)) {
+            throw new Error(`ssf_handoff: invalid action "${action}"`);
+          }
+          assertEnum(args.type, HANDOFF_TYPE_ENUM, 'type');
+          assertEnum(args.decision, HANDOFF_DECISION_ENUM, 'decision');
+          if (action === 'create') {
+            if (!args.type || !args.objective || !args.expectedOutput || !args.acceptance) {
+              throw new Error('ssf_handoff create: type, objective, expectedOutput and acceptance are required');
+            }
+          }
+          if (action === 'finish') {
+            if (!args.id) {
+              throw new Error('ssf_handoff finish: id is required');
+            }
+          }
+          if (action === 'resolve') {
+            if (!args.id || !args.decision) {
+              throw new Error('ssf_handoff resolve: id and decision are required');
+            }
+          }
+          const dir = `changes/${args.changeDir}`;
+          let cliArgs;
+          if (action === 'create') {
+            cliArgs = ['handoff', 'create', dir, '--type', args.type, '--objective', args.objective, '--expected-output', args.expectedOutput, '--acceptance', args.acceptance];
+          } else if (action === 'list') {
+            cliArgs = ['handoff', 'list', dir];
+          } else if (action === 'finish') {
+            cliArgs = ['handoff', 'finish', dir, args.id];
+          } else if (action === 'resolve') {
+            cliArgs = ['handoff', 'resolve', dir, args.id, '--decision', args.decision];
+          } else {
+            throw new Error(`ssf_handoff: invalid action "${action}"`);
+          }
+          return await runner.runSsf({ args: cliArgs, changeDir: args.changeDir, json: true, exec });
+        },
+      }));
+      continue;
+    }
+
+    if (isDebug) {
+      ctx.tools.register(defineTool({
+        name: id,
+        description: DESCRIPTIONS[id],
+        parameters: {
+          changeDir: { type: 'string', required: true, description: 'Change directory name, relative to the workspace changes/ directory.' },
+          action: { type: 'string', required: true, enum: DEBUG_ACTIONS, description: 'Debug action to perform.' },
+          id: { type: 'string', description: 'Attempt id for record_attempt.' },
+          summary: { type: 'string', description: 'Summary for record_attempt.' },
+          evidence: { type: 'string', description: 'Evidence path for record_attempt.' },
+          decision: { type: 'string', enum: DEBUG_DECISION_ENUM, description: 'Decision for escalate.' },
+          reason: { type: 'string', description: 'Reason for escalate.' },
+        },
+        output: {
+          schema: OUTPUTS[id],
+          render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+        },
+        async execute(args, exec) {
+          const root = resolveRoot();
+          resolveChangePath(root, args.changeDir);
+          const action = args.action;
+          if (action === undefined || action === null) {
+            throw new Error('ssf_debug: action is required');
+          }
+          if (!DEBUG_ACTIONS.includes(action)) {
+            throw new Error(`ssf_debug: invalid action "${action}"`);
+          }
+          assertEnum(args.decision, DEBUG_DECISION_ENUM, 'decision');
+          if (action === 'record_attempt') {
+            if (!args.id || !args.summary || !args.evidence) {
+              throw new Error('ssf_debug record_attempt: id, summary and evidence are required');
+            }
+          }
+          if (action === 'escalate') {
+            if (!args.decision || !args.reason) {
+              throw new Error('ssf_debug escalate: decision and reason are required');
+            }
+          }
+          const dir = `changes/${args.changeDir}`;
+          let cliArgs;
+          if (action === 'record_attempt') {
+            cliArgs = ['debug', 'attempt', 'record', dir, '--id', args.id, '--summary', args.summary, '--evidence', args.evidence];
+          } else if (action === 'show_attempts') {
+            cliArgs = ['debug', 'attempt', 'show', dir];
+          } else if (action === 'escalate') {
+            cliArgs = ['debug', 'escalate', dir, '--decision', args.decision, '--reason', args.reason, '--confirm'];
+          } else {
+            throw new Error(`ssf_debug: invalid action "${action}"`);
           }
           return await runner.runSsf({ args: cliArgs, changeDir: args.changeDir, json: true, exec });
         },
