@@ -323,13 +323,18 @@ describe('DP-1 gate on exploring → specifying', () => {
 
   it('SHALL exempt quick workflow from the DP-1 gate on exploring → specifying', () => {
     const result = runGuard('exploring', 'specifying', dir, 'quick', 'dp_1_result: null\n');
-    assert.equal(result.ok, true, `quick workflow must bypass DP-1: ${guardOutput(result)}`);
-    assert.deepEqual(JSON.parse(result.stdout).checks, []);
+    // Quick is exempt from DP-1, but exploring→specifying is still rejected via fast-path (workflow-mode), not DP-1.
+    assert.equal(result.ok, false, `quick workflow must bypass DP-1 but still be rejected via fast-path: ${guardOutput(result)}`);
+    const checks = JSON.parse(result.stdout).checks;
+    assert.ok(checks.some(c => c.dimension === 'workflow-mode'), `expected workflow-mode failure: ${guardOutput(result)}`);
+    assert.ok(!checks.some(c => c.dimension === 'dp-gate-passed'), `DP-1 must not be checked for quick: ${guardOutput(result)}`);
   });
 
   it('SHALL exempt tweak workflow from the DP-1 gate on exploring → specifying', () => {
     const result = runGuard('exploring', 'specifying', dir, 'tweak', 'dp_1_result: null\n');
-    assert.equal(result.ok, true, `tweak workflow must bypass DP-1: ${guardOutput(result)}`);
-    assert.deepEqual(JSON.parse(result.stdout).checks, []);
+    assert.equal(result.ok, false, `tweak workflow must bypass DP-1 but still be rejected via fast-path: ${guardOutput(result)}`);
+    const checks = JSON.parse(result.stdout).checks;
+    assert.ok(checks.some(c => c.dimension === 'workflow-mode'), `expected workflow-mode failure: ${guardOutput(result)}`);
+    assert.ok(!checks.some(c => c.dimension === 'dp-gate-passed'), `DP-1 must not be checked for tweak: ${guardOutput(result)}`);
   });
 });

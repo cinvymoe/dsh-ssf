@@ -3,7 +3,7 @@ name: workflow-start
 description: Spec-superflow 状态机工作流主入口（entry router：ssf）。用户说开始/启动/继续/恢复/推进工作流、用 workflow 开始、下一步做什么，或显式提到 spec-superflow（ssf）时调用；工作区有 changes/<name>/、.spec-superflow.yaml、proposal.md、specs/、tasks.md、execution-contract.md 即为 ssf（状态机）上下文。按当前 state 路由到阶段 skill（exploring→need-explorer、executing→build-executor 等）。注意：此 workflow 指 spec-superflow 状态机，不是 JS 编排的 workflow 工具。Entry router for the spec-superflow state machine: start/continue/resume/plan a change. Not for unrelated coding tasks.
 ---
 
-> **Tool-first rule (`dsh-ssf` plugin):** 所有 ssf 操作优先调用 `ssf_*` 原生工具（含写工具）；仅当工具不存在或调用失败时才回退到等价 `ssf` CLI（可经 `ssf_run`）。
+> **Tool-first rule (`dsh-ssf` plugin):** 所有 ssf_* 操作优先调用 `ssf_*` 原生工具（含写工具）；仅当工具不存在或调用失败时才回退到等价 `ssf` CLI（可经 `ssf_run`）。
 
 # Workflow Start
 

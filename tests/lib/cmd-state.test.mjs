@@ -148,6 +148,7 @@ describe('cmd-state: transition', () => {
 
   it('transitions from exploring to specifying', () => {
     ssf(`state init ${tempDir}`);
+    ssf(`state set ${tempDir} dp_1_result "confirmed: test DP-1"`);
     const result = ssf(`state transition ${tempDir} specifying`);
     assert.equal(result.exitCode, 0);
     assert.ok(result.stdout.includes('exploring -> specifying'));
@@ -159,6 +160,7 @@ describe('cmd-state: transition', () => {
     try {
       assert.equal(ssf(`state init ${emptyChange}`).exitCode, 0);
       assert.equal(ssf(`state set ${emptyChange} workflow full`).exitCode, 0);
+      assert.equal(ssf(`state set ${emptyChange} dp_1_result "confirmed: test DP-1"`).exitCode, 0);
       const transition = ssf(`state transition ${emptyChange} specifying`);
       assert.equal(transition.exitCode, 0, transition.stderr);
       assert.equal(ssf(`state check ${emptyChange}`).exitCode, 0);
@@ -178,6 +180,7 @@ describe('cmd-state: transition', () => {
       writeFileSync(join(changeDir, 'specs', 'test', 'spec.md'), '## ADDED Requirements\n### Requirement: Relative transition\nThe system SHALL resolve relative change paths from the caller project.\n#### Scenario: Transition\n- **WHEN** a project invokes state transition with a relative path\n- **THEN** its artifacts are checked.');
 
       assert.equal(ssf('state init changes/relative-change', { cwd: projectRoot }).exitCode, 0);
+      assert.equal(ssf('state set changes/relative-change dp_1_result "confirmed: test DP-1"', { cwd: projectRoot }).exitCode, 0);
       const result = ssf('state transition changes/relative-change specifying', { cwd: projectRoot });
 
       assert.equal(result.exitCode, 0, result.stderr);
@@ -191,6 +194,7 @@ describe('cmd-state: transition', () => {
     // Re-init to ensure we start from exploring
     rmSync(join(tempDir, '.spec-superflow.yaml'), { force: true });
     ssf(`state init ${tempDir}`);
+    ssf(`state set ${tempDir} dp_1_result "confirmed: test DP-1"`);
     // exploring→specifying is the next legal mainline transition
     const result = ssf(`state transition ${tempDir} specifying --json`);
     const parsed = JSON.parse(result.stdout);
@@ -201,6 +205,7 @@ describe('cmd-state: transition', () => {
 
   it('persists state across invocations', () => {
     ssf(`state init ${tempDir}`);
+    ssf(`state set ${tempDir} dp_1_result "confirmed: test DP-1"`);
     // Legal transition: exploring → specifying
     ssf(`state transition ${tempDir} specifying`);
 
@@ -221,6 +226,7 @@ describe('cmd-state: transition', () => {
       writeFileSync(join(changeDir, 'specs', 'test', 'spec.md'), '## ADDED Requirements\n### Requirement: Relative transition\nThe system SHALL resolve relative change paths from the caller project.\n#### Scenario: Transition\n- **WHEN** a project invokes state transition with a relative path\n- **THEN** its artifacts are checked.');
 
       assert.equal(ssf('state init changes/relative-change', { cwd: projectRoot }).exitCode, 0);
+      assert.equal(ssf('state set changes/relative-change dp_1_result "confirmed: test DP-1"', { cwd: projectRoot }).exitCode, 0);
       const result = ssf('state transition changes/relative-change specifying', { cwd: projectRoot });
 
       assert.equal(result.exitCode, 0, result.stderr);
