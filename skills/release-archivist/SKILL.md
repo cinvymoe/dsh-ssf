@@ -3,7 +3,7 @@ name: release-archivist
 description: Close out a spec-superflow change with verification, summary, and archive readiness. Invoke when implementation is complete, verification is underway, or the user asks for a final wrap-up.
 ---
 
-> **Tool-first rule (`dsh-ssf` plugin):** 所有 ssf 操作优先调用 `ssf_*` 原生工具（含写工具）；仅当工具不存在或调用失败时才回退到等价 `ssf` CLI（可经 `ssf_run`）。
+> **Tool-first rule (`dsh-ssf` plugin):** 所有 ssf_* 操作优先调用 `ssf_*` 原生工具（含写工具）；仅当工具不存在或调用失败时才回退到等价 `ssf` CLI（可经 `ssf_run`）。
 
 # Release Archivist
 

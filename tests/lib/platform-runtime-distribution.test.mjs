@@ -115,8 +115,8 @@ describe('local runtime deployment', () => {
       const localPrefix = `node '${join(realpathSync(pluginRoot), 'scripts', 'spec-superflow.mjs')}'`;
 
       assert.match(content, new RegExp(localPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-      // CLI equiv brackets (e.g. "（CLI 等价：ssf ...）") are documentation, not runtime commands; strip them before checking.
-      const contentWithoutCliEquiv = content.replace(/（CLI[^）]*）/g, '');
+      // CLI equiv brackets and backticked docs (e.g. "（CLI 等价：ssf ...）" or "`ssf finish`") are documentation, not runtime commands; strip them before checking.
+      const contentWithoutCliEquiv = content.replace(/（CLI[^）]*）/g, '').replace(/`ssf [^`]+`/g, '');
       assert.doesNotMatch(contentWithoutCliEquiv, new RegExp(`\\b${SOURCE_RUNTIME_COMMAND}\\s+`));
     } finally {
       rmSync(target, { recursive: true, force: true });

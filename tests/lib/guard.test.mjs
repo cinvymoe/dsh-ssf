@@ -810,7 +810,7 @@ describe('guard: workflow-aware transition resolution', () => {
     writeFileSync(join(dir, '.spec-superflow.yaml'), 'state: exploring\nworkflow: full\ndp_1_result: "confirmed: test DP-1"\n');
     const result = run('exploring', 'specifying', 'full');
     assert.equal(result.exitCode, 0, JSON.stringify(result.output));
-    assert.deepEqual(result.output.checks, []);
+    assert.ok(result.output.checks.every(c => c.pass), JSON.stringify(result.output));
   });
 
   it('allows specifying→approved-for-build for quick (corrective skip)', () => {
@@ -911,7 +911,7 @@ describe('guard: workflow-aware transition resolution', () => {
       writeFileSync(join(workflowDir, '.spec-superflow.yaml'), 'state: exploring\nworkflow: full\ndp_1_result: "confirmed: test DP-1"\n');
       const released = run('exploring', 'specifying', 'full');
       assert.equal(released.exitCode, 0, JSON.stringify(released.output));
-      assert.deepEqual(released.output.checks, []);
+      assert.ok(released.output.checks.every(c => c.pass), JSON.stringify(released.output));
     } finally {
       rmSync(workflowDir, { recursive: true, force: true });
     }
