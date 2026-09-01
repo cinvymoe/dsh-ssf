@@ -1,15 +1,17 @@
-// packages/dsh-ssf/lib/tools.js — six structured ssf tools + registration
+// packages/dsh-ssf/lib/tools.js — eight structured ssf tools + registration
 // Handlers: ssf_list / ssf_state / ssf_workflow (task 2.2); ssf_execution /
-// ssf_validate / ssf_guard (task 2.3); ssf_run lands in task 2.4.
+// ssf_validate / ssf_guard (task 2.3); ssf_state_write / ssf_workflow_write (task 2.1, wave w2-state-workflow);
+// ssf_run lands in task 2.4.
 //
 // Conversation binding: every structured tool that targets a changeDir (all
 // but ssf_list) and ssf_run with a `changes/<name>` argument report the call
 // through the optional `onBind(sessionId, changeDir)` dep, so the host binds
 // the executed flow to the calling conversation (see lib/index.js
 // bindSession). Binding failures never affect the tool result.
-import { isAbsolute, join, basename } from 'node:path';
+import { isAbsolute, join, basename, dirname } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { scanChanges, summarizeChange } from './change-scanner.js';
 import { readState } from '../../../scripts/lib/state-loader.mjs';
@@ -18,6 +20,7 @@ import { Validator } from '../../../dist/index.js';
 import { validateSpecPathLayout } from '../../../scripts/lib/spec-paths.mjs';
 import { readPlan, describeWaves } from '../../../scripts/lib/execution-plan.mjs';
 import { SSF_COMMANDS } from '../../../scripts/spec-superflow.mjs';
+import { createCliRunner } from './cli-runner.js';
 
 const TOOL_IDS = [
   'ssf_list',
@@ -26,6 +29,8 @@ const TOOL_IDS = [
   'ssf_execution',
   'ssf_validate',
   'ssf_guard',
+  'ssf_state_write',
+  'ssf_workflow_write',
 ];
 
 /** Envelope for the ssf_* structured outputs (ok + domain payload). */
@@ -44,6 +49,18 @@ function envelopeSchema(payloadField, extraProperties = {}) {
     },
   };
 }
+
+const WRITE_OUTPUT = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    ok: { type: 'boolean', required: true },
+    exitCode: { type: 'integer', required: true },
+    result: { type: 'object', additionalProperties: true },
+    stdout: { type: 'string', required: true },
+    stderr: { type: 'string', required: true },
+  },
+};
 
 const OUTPUTS = {
   ssf_list: {
@@ -76,6 +93,8 @@ const OUTPUTS = {
   ssf_execution: envelopeSchema('execution'),
   ssf_validate: envelopeSchema('report'),
   ssf_guard: envelopeSchema('guard'),
+  ssf_state_write: WRITE_OUTPUT,
+  ssf_workflow_write: WRITE_OUTPUT,
 };
 
 const DESCRIPTIONS = {
@@ -85,6 +104,8 @@ const DESCRIPTIONS = {
   ssf_execution: 'Read one change\'s persisted execution plan summary (current flag and waves).',
   ssf_validate: 'Validate one change\'s planning artifacts against the spec-superflow schema rules (proposal + specs).',
   ssf_guard: 'Run the phase-transition guard check for one change (dp gates and artifact conditions).',
+  ssf_state_write: 'Write state machine fields for a spec-superflow change (init/set/transition/rebuild) via the native CLI.',
+  ssf_workflow_write: 'Write workflow selection for a spec-superflow change (recommend/select/accept/evidence/escalate) via the native CLI.',
 };
 
 /**
@@ -123,15 +144,213 @@ function notifyBind(onBind, exec, changeDir) {
 }
 
 /**
- * Register the six structured ssf tools on ctx.tools.
+ * Register the structured ssf tools on ctx.tools.
  * @param {object} ctx - cordis context with a tools registry.
  * @param {{ resolveRoot: () => string, onBind?: (sessionId: unknown, changeDir: string) => void }} deps
  *   - workspace root resolver plus the optional conversation-binding hook
  *     (injected by lib/index.js).
  */
 export function registerTools(ctx, { resolveRoot, onBind }) {
+  const runner = (() => {
+    try {
+      const raw = createCliRunner({ subprocess: ctx.subprocess, repoRoot: join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..'), onBind, refresh: () => ctx.ssf?.refresh?.().catch(() => {}), resolveRoot });
+      // createCliRunner returns a function (runSsf); expose as .runSsf for the runner.runSsf(...) call shape
+      if (typeof raw === 'function') return { runSsf: raw };
+      return raw;
+    } catch {
+      return { runSsf: async () => { throw new Error('subprocess is required for write tools'); } };
+    }
+  })();
+
+  const STATE_WRITE_ACTIONS = ['init', 'set', 'transition', 'rebuild'];
+  const WORKFLOW_WRITE_ACTIONS = ['recommend', 'select', 'accept', 'evidence', 'escalate'];
+  const YES_NO_UNKNOWN = ['yes', 'no', 'unknown'];
+  const YES_NO = ['yes', 'no'];
+  const UNCERTAINTY_ENUM = ['low', 'high', 'unknown'];
+  const REQUEST_KIND_ENUM = ['standard', 'incident'];
+  const MODE_ENUM = ['full', 'hotfix', 'tweak', 'quick', 'lightweight'];
+  const VERIFICATION_ENUM = ['tdd', 'new-test', 'bounded'];
+
+  function assertEnum(value, allowed, fieldName) {
+    if (value !== undefined && value !== null && !allowed.includes(value)) {
+      throw new Error(`invalid ${fieldName}: must be one of ${allowed.join(', ')}`);
+    }
+  }
+
   for (const id of TOOL_IDS) {
     const isList = id === 'ssf_list';
+    const isStateWrite = id === 'ssf_state_write';
+    const isWorkflowWrite = id === 'ssf_workflow_write';
+
+    if (isStateWrite) {
+      ctx.tools.register(defineTool({
+        name: id,
+        description: DESCRIPTIONS[id],
+        parameters: {
+          changeDir: { type: 'string', required: true, description: 'Change directory name, relative to the workspace changes/ directory.' },
+          action: { type: 'string', required: true, enum: STATE_WRITE_ACTIONS, description: 'State action to perform.' },
+          field: { type: 'string', description: 'Field name for set action.' },
+          value: { type: 'string', description: 'Field value for set action.' },
+          target: { type: 'string', description: 'Target state for transition action.' },
+        },
+        output: {
+          schema: OUTPUTS[id],
+          render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+        },
+        async execute(args, exec) {
+          const root = resolveRoot();
+          // changeDir pre-validation via resolveChangePath (empty/absolute/.. throw, not entering runner)
+          resolveChangePath(root, args.changeDir);
+          const action = args.action;
+          if (action === undefined || action === null) {
+            throw new Error('ssf_state_write: action is required');
+          }
+          if (!STATE_WRITE_ACTIONS.includes(action)) {
+            throw new Error(`ssf_state_write: invalid action "${action}"`);
+          }
+          if (action === 'set') {
+            if (!args.field || !args.value) {
+              throw new Error('ssf_state_write set: field and value are required');
+            }
+          }
+          if (action === 'transition') {
+            if (!args.target) {
+              throw new Error('ssf_state_write transition: target is required');
+            }
+          }
+          const dir = `changes/${args.changeDir}`;
+          let cliArgs;
+          if (action === 'init') {
+            cliArgs = ['state', 'init', dir];
+          } else if (action === 'set') {
+            cliArgs = ['state', 'set', dir, args.field, args.value];
+          } else if (action === 'transition') {
+            cliArgs = ['state', 'transition', dir, args.target];
+          } else if (action === 'rebuild') {
+            cliArgs = ['state', 'rebuild', dir];
+          } else {
+            throw new Error(`ssf_state_write: invalid action "${action}"`);
+          }
+          return await runner.runSsf({ args: cliArgs, changeDir: args.changeDir, json: true, exec });
+        },
+      }));
+      continue;
+    }
+
+    if (isWorkflowWrite) {
+      ctx.tools.register(defineTool({
+        name: id,
+        description: DESCRIPTIONS[id],
+        parameters: {
+          changeDir: { type: 'string', required: true, description: 'Change directory name, relative to the workspace changes/ directory.' },
+          action: { type: 'string', required: true, enum: WORKFLOW_WRITE_ACTIONS, description: 'Workflow action to perform.' },
+          taskCount: { type: 'integer', description: 'Number of tasks for recommendation.' },
+          fileCount: { type: 'integer', description: 'Number of files for recommendation.' },
+          configDocOnly: { type: 'string', enum: YES_NO_UNKNOWN, description: 'Whether change is config/doc only.' },
+          schemaApiChange: { type: 'string', enum: YES_NO_UNKNOWN, description: 'Whether change modifies schema/API.' },
+          newModule: { type: 'string', enum: YES_NO_UNKNOWN, description: 'Whether change adds a new module.' },
+          behavioralConstraintChange: { type: 'string', enum: YES_NO, description: 'Whether change modifies behavioral constraints.' },
+          crossModuleChange: { type: 'string', enum: YES_NO, description: 'Whether change is cross-module.' },
+          uncertainty: { type: 'string', enum: UNCERTAINTY_ENUM, description: 'Uncertainty level.' },
+          requestKind: { type: 'string', enum: REQUEST_KIND_ENUM, description: 'Request kind.' },
+          mode: { type: 'string', enum: MODE_ENUM, description: 'Workflow mode for select.' },
+          reason: { type: 'string', description: 'Reason for select/escalate.' },
+          scopeConfirmation: { type: 'string', description: 'Scope confirmation for select.' },
+          acknowledgeRecommendation: { type: 'boolean', description: 'Whether to acknowledge recommendation for select.' },
+          verification: { type: 'string', enum: VERIFICATION_ENUM, description: 'Verification strategy for select/accept.' },
+          focusedReview: { type: 'string', description: 'Focused review summary for evidence.' },
+          verificationCommand: { type: 'string', description: 'Verification command for evidence.' },
+          verificationResult: { type: 'string', enum: ['pass'], default: 'pass', description: 'Verification result for evidence.' },
+        },
+        output: {
+          schema: OUTPUTS[id],
+          render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+        },
+        async execute(args, exec) {
+          const root = resolveRoot();
+          resolveChangePath(root, args.changeDir);
+          const action = args.action;
+          if (action === undefined || action === null) {
+            throw new Error('ssf_workflow_write: action is required');
+          }
+          if (!WORKFLOW_WRITE_ACTIONS.includes(action)) {
+            throw new Error(`ssf_workflow_write: invalid action "${action}"`);
+          }
+          // enum validation for provided fields
+          assertEnum(args.configDocOnly, YES_NO_UNKNOWN, 'configDocOnly');
+          assertEnum(args.schemaApiChange, YES_NO_UNKNOWN, 'schemaApiChange');
+          assertEnum(args.newModule, YES_NO_UNKNOWN, 'newModule');
+          assertEnum(args.behavioralConstraintChange, YES_NO, 'behavioralConstraintChange');
+          assertEnum(args.crossModuleChange, YES_NO, 'crossModuleChange');
+          assertEnum(args.uncertainty, UNCERTAINTY_ENUM, 'uncertainty');
+          assertEnum(args.requestKind, REQUEST_KIND_ENUM, 'requestKind');
+          assertEnum(args.mode, MODE_ENUM, 'mode');
+          assertEnum(args.verification, VERIFICATION_ENUM, 'verification');
+          assertEnum(args.verificationResult, ['pass'], 'verificationResult');
+          if (args.taskCount !== undefined && args.taskCount !== null) {
+            if (!Number.isInteger(args.taskCount) || args.taskCount < 0) {
+              throw new Error('invalid taskCount: must be a non-negative integer');
+            }
+          }
+          if (args.fileCount !== undefined && args.fileCount !== null) {
+            if (!Number.isInteger(args.fileCount) || args.fileCount < 0) {
+              throw new Error('invalid fileCount: must be a non-negative integer');
+            }
+          }
+          // per-action required validation
+          if (action === 'select') {
+            if (!args.mode || !args.reason) {
+              throw new Error('ssf_workflow_write select: mode and reason are required');
+            }
+          }
+          if (action === 'accept') {
+            if (!args.verification) {
+              throw new Error('ssf_workflow_write accept: verification is required');
+            }
+          }
+          if (action === 'evidence') {
+            if (!args.focusedReview || !args.verificationCommand) {
+              throw new Error('ssf_workflow_write evidence: focusedReview and verificationCommand are required');
+            }
+          }
+          if (action === 'escalate') {
+            if (!args.reason) {
+              throw new Error('ssf_workflow_write escalate: reason is required');
+            }
+          }
+          const dir = `changes/${args.changeDir}`;
+          let cliArgs;
+          if (action === 'recommend') {
+            cliArgs = ['workflow', 'recommend', dir];
+            if (args.taskCount !== undefined) cliArgs.push('--task-count', String(args.taskCount));
+            if (args.fileCount !== undefined) cliArgs.push('--file-count', String(args.fileCount));
+            if (args.configDocOnly !== undefined) cliArgs.push('--config-doc-only', args.configDocOnly);
+            if (args.schemaApiChange !== undefined) cliArgs.push('--schema-api-change', args.schemaApiChange);
+            if (args.newModule !== undefined) cliArgs.push('--new-module', args.newModule);
+            if (args.behavioralConstraintChange !== undefined) cliArgs.push('--behavioral-constraint-change', args.behavioralConstraintChange);
+            if (args.crossModuleChange !== undefined) cliArgs.push('--cross-module-change', args.crossModuleChange);
+            if (args.uncertainty !== undefined) cliArgs.push('--uncertainty', args.uncertainty);
+            if (args.requestKind !== undefined) cliArgs.push('--request-kind', args.requestKind);
+          } else if (action === 'select') {
+            cliArgs = ['workflow', 'select', dir, '--mode', args.mode, '--confirm', '--reason', args.reason];
+            if (args.scopeConfirmation !== undefined) cliArgs.push('--scope-confirmation', args.scopeConfirmation);
+            if (args.acknowledgeRecommendation === true) cliArgs.push('--acknowledge-recommendation');
+            if (args.verification !== undefined) cliArgs.push('--verification', args.verification);
+          } else if (action === 'accept') {
+            cliArgs = ['workflow', 'accept', dir, '--source', 'direct-request', '--verification', args.verification];
+          } else if (action === 'evidence') {
+            cliArgs = ['workflow', 'evidence', dir, '--focused-review', args.focusedReview, '--verification-command', args.verificationCommand, '--verification-result', args.verificationResult || 'pass'];
+          } else if (action === 'escalate') {
+            cliArgs = ['workflow', 'escalate', dir, '--reason', args.reason];
+          } else {
+            throw new Error(`ssf_workflow_write: invalid action "${action}"`);
+          }
+          return await runner.runSsf({ args: cliArgs, changeDir: args.changeDir, json: true, exec });
+        },
+      }));
+      continue;
+    }
+
     const changeDir = {
       type: 'string',
       description: isList
