@@ -93,7 +93,7 @@ Subagent (general-purpose):
     report path. End with the exact receipt command:
 
     ```bash
-    ssf execution review <change-dir> --wave [WAVE_ID] --base [BASE_SHA] --head [HEAD_SHA] --report [REVIEW_REPORT_FILE] --verdict <pass|fail>
+    # 优先调用 `ssf_execution_write`（action: "review", changeDir: "<change-dir>", wave: "[WAVE_ID]", base: "[BASE_SHA]", head: "[HEAD_SHA]", report: "[REVIEW_REPORT_FILE]", verdict: "<pass|fail>"）（CLI 等价：`ssf execution review <change-dir> --wave [WAVE_ID] --base [BASE_SHA] --head [HEAD_SHA] --report [REVIEW_REPORT_FILE] --verdict <pass|fail>`）
     ```
 
     Use `fail` when any Critical or Important finding remains. A repair needs
@@ -155,6 +155,8 @@ Subagent (general-purpose):
 - `[REVIEW_REPORT_FILE]` — REQUIRED: distinct, persisted, non-empty review report path stored in the execution receipt
 
 **Reviewer returns:** Strengths, Issues (Critical / Important / Minor), Recommendations, Assessment
+
+> 若上述 ssf_* 工具在你的环境不可用，回退到括号内备注的等价 ssf CLI（可经 ssf_run）。
 
 ## Example Output
 

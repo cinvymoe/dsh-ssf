@@ -3,6 +3,8 @@ name: release-archivist
 description: Close out a spec-superflow change with verification, summary, and archive readiness. Invoke when implementation is complete, verification is underway, or the user asks for a final wrap-up.
 ---
 
+> **Tool-first rule (`dsh-ssf` plugin):** 所有 ssf 操作优先调用 `ssf_*` 原生工具（含写工具）；仅当工具不存在或调用失败时才回退到等价 `ssf` CLI（可经 `ssf_run`）。
+
 # Release Archivist
 
 Finish a spec-superflow change cleanly with verification evidence. This skill
@@ -11,12 +13,8 @@ the final transition to `closing`.
 
 ## Execution-State Guard
 
-Before verification, `ssf audit`, any DP state write, or delta-spec merge, run
-`ssf state get <change-dir> state`.
-Continue only when the persisted state is exactly `executing`. If it is
-`closing` → STOP: "Closing is terminal; release, audit, and archival work were
-completed before this transition." For any other state, or if the state cannot
-be read → STOP and route through `workflow-start`; do not perform side effects.
+Before verification, 调用 `ssf_audit`（changeDir: "<change-dir>"）（CLI 等价：`ssf audit <change-dir>`）, any DP state write, or delta-spec merge, run 调用 `ssf_state`（changeDir: "<change-dir>"）（CLI 等价：`ssf state get <change-dir> state`）。
+Continue only when the persisted state is exactly `executing`. If it is `closing` → STOP: "Closing is terminal; release, audit, and archival work were completed before this transition." For any other state, or if the state cannot be read → STOP and route through `workflow-start`; do not perform side effects.
 
 ## Direct Short-Path Closure (run before the Full checklist)
 
@@ -77,27 +75,16 @@ Check for files modified outside scope fence, new dependencies not in design. Un
 - Scope added without artifact updates?
 - Unresolved blockers or known risks?
 - Delta specs exist that need merging?
-- Run `ssf audit <change-dir>` — include `decision-point-audit.md` in archive
+- Run 调用 `ssf_audit`（changeDir: "<change-dir>"）（CLI 等价：`ssf audit <change-dir> --json`） — include `decision-point-audit.md` in archive
 
 ### DP-6 (Verification Outcome, Full/legacy Hotfix)
-```bash
-ssf state set <change-dir> dp_6_result "<pass|conditional|fail>: <summary>"
-ssf state set <change-dir> dp_6_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ)
-```
+调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_6_result", value: "<pass|conditional|fail>: <summary>"）（CLI 等价：`ssf state set <change-dir> dp_6_result "<pass|conditional|fail>: <summary>" --json`）和 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_6_timestamp", value: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"）（CLI 等价：`ssf state set <change-dir> dp_6_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ) --json`）。
 If FAIL, do NOT proceed to DP-7. Route back or ask about abandonment.
 
-After recording a PASS outcome, also record it as the verification gate so the
-`executing → closing` transition is allowed (the guard accepts either
-`test_result: pass` or a `dp_6_result` starting with `pass`):
-```bash
-ssf state set <change-dir> test_result pass
-```
+After recording a PASS outcome, also record it as the verification gate so the `executing → closing` transition is allowed (the guard accepts either `test_result: pass` or a `dp_6_result` starting with `pass`): 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "test_result", value: "pass"）（CLI 等价：`ssf state set <change-dir> test_result pass --json`）。
 
 ### DP-7 (Archive Confirmation, Full/legacy Hotfix)
-```bash
-ssf state set <change-dir> dp_7_result "confirmed: <archive summary>"
-ssf state set <change-dir> dp_7_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ)
-```
+调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_7_result", value: "confirmed: <archive summary>"）（CLI 等价：`ssf state set <change-dir> dp_7_result "confirmed: <archive summary>" --json`）和 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_7_timestamp", value: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"）（CLI 等价：`ssf state set <change-dir> dp_7_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ) --json`）。
 Verify DP-0 through DP-6 are recorded before DP-7.
 
 ## Archive Rule (Full/legacy Hotfix)
@@ -106,29 +93,16 @@ If implementation diverged from the contract, return to `bridging` before closur
 
 ## Finalize While Executing (Full/legacy Hotfix)
 
-Complete every release, delta-spec synchronization, and audit action while the
-state remains `executing`. If delta specs exist, invoke `spec-merger` and
-resolve its outcome before the final `executing → closing` transition. Then
-run `ssf state transition <change-dir> closing`.
-`executing → closing` is the final action: once it succeeds, select no next
-skill and run no recovery scans.
+Complete every release, delta-spec synchronization, and audit action while the state remains `executing`. If delta specs exist, invoke `spec-merger` and resolve its outcome before the final `executing → closing` transition. Then run 调用 `ssf_state_write`（action: "transition", changeDir: "<change-dir>", target: "closing"）（CLI 等价：`ssf state transition <change-dir> closing --json`）。
+`executing → closing` is the final action: once it succeeds, select no next skill and run no recovery scans.
 
 ## Physical Archive (Full/legacy Hotfix only)
 
-After the `executing → closing` transition succeeds, complete the physical
-archive with:
+After the `executing → closing` transition succeeds, complete the physical archive with:
 
-```bash
-ssf finish <change-dir> [--test-cmd <command>]
-```
+调用 `ssf_finish`（changeDir: "<change-dir>", testCmd: "<command>"）（CLI 等价：`ssf finish <change-dir> --test-cmd <command>`）。
 
-`ssf finish` merges the isolation branch back to the trunk (`--no-ff`),
-verifies the trunk (default `npm test`, `--test-cmd` override, 10-minute
-timeout), then removes the worktree and the isolation branch. For submodule
-projects it auto-falls-back to `--force` worktree removal; if that also
-fails it prints the merge commit and manual cleanup commands. Quick /
-direct Hotfix / tweak / lightweight skip this step — their `closing` is
-already the physical terminal.
+`ssf finish` merges the isolation branch back to the trunk (`--no-ff`), verifies the trunk (default `npm test`, `--test-cmd` override, 10-minute timeout), then removes the worktree and the isolation branch. For submodule projects it auto-falls-back to `--force` worktree removal; if that also fails it prints the merge commit and manual cleanup commands. Quick / direct Hotfix / tweak / lightweight skip this step — their `closing` is already the physical terminal.
 
 ## Lightweight Closure (Quick/direct Hotfix/tweak)
 
@@ -137,7 +111,7 @@ Quick and direct Hotfix use a concise verification summary: changed files, focus
 ## Exception Handling
 
 - **Parse failures**: Report exact file and section
-- **Missing files**: If audit can't generate, run `ssf audit` manually
+- **Missing files**: If audit can't generate, run 调用 `ssf_audit`（changeDir: "<change-dir>"）（CLI 等价：`ssf audit <change-dir> --json`） manually
 - **User interruption**: Re-run verification from the beginning on resume
 - **DP gaps**: Flag missing DPs during DP-6; ask user whether to proceed or return
 
@@ -178,8 +152,5 @@ persisted `closing` state and `abandoned` are terminal.
 
 - Current stage: successfully persisted `closing` or `abandoned`.
 - Completed / blocker: `<persisted terminal outcome>`.
-- Next stage: for Full/legacy Hotfix, the physical archive via `ssf finish
-  <change-dir>` (worktree merge + cleanup); once it succeeds, next = none.
-  For Quick / direct Hotfix / tweak / lightweight, `none` — closing is the
-  physical terminal.
+- Next stage: for Full/legacy Hotfix, the physical archive via 调用 `ssf_finish`（changeDir: "<change-dir>"）（CLI 等价：`ssf finish <change-dir>`） (worktree merge + cleanup); once it succeeds, next = none. For Quick / direct Hotfix / tweak / lightweight, `none` — closing is the physical terminal.
 - Entry condition: no further state transition exists.

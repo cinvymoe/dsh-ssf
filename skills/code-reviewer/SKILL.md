@@ -3,12 +3,7 @@ name: code-reviewer
 description: Review completed implementation batches for spec compliance and code quality. Invoke after execution batches complete, before merging, or when a review gate is reached in the workflow.
 ---
 
-> **Tool-first rule (`dsh-ssf` plugin):** when this skill instructs running a
-> CLI command through `ssf`, prefer the matching native `ssf_*` tool (e.g.
-> `ssf_state`, `ssf_validate`, `ssf_run`) when the `dsh-ssf` plugin is loaded;
-> fall back to executing the exact same command via the `ssf` CLI only when
-> the native tools are unavailable. Commands, arguments, and output handling
-> stay identical on both paths.
+> **Tool-first rule (`dsh-ssf` plugin):** 所有 ssf 操作优先调用 `ssf_*` 原生工具（含写工具）；仅当工具不存在或调用失败时才回退到等价 `ssf` CLI（可经 `ssf_run`）。
 
 # Code Reviewer
 
@@ -23,7 +18,7 @@ Two responsibilities: requesting review (dispatching a reviewer subagent) and re
 1. Get SHAs: `BASE_SHA=$(git rev-parse HEAD~1)` and `HEAD_SHA=$(git rev-parse HEAD)`
 2. Dispatch `general-purpose` subagent using template at `skills/code-reviewer/code-reviewer-prompt.md`
 3. Fill placeholders: `[DESCRIPTION]` (what was built), `[PLAN_OR_REQUIREMENTS]` (contract/spec reference), `[BASE_SHA]`, `[HEAD_SHA]`, `[WAVE_ID]`, and a distinct `[REVIEW_REPORT_FILE]`.
-4. Require the reviewer to write a non-empty persisted review report at `.superpowers/sdd/reviews/<wave-id>.md`, then record that exact in-overlay path in the wave receipt with `ssf execution review <change-dir> --wave <wave-id> --base <base-sha> --head <head-sha> --report .superpowers/sdd/reviews/<wave-id>.md --verdict <pass|fail>`. The execution plan initializes this directory; paths outside it are rejected for audit safety.
+4. Require the reviewer to write a non-empty persisted review report at `.superpowers/sdd/reviews/<wave-id>.md`, then record that exact in-overlay path in the wave receipt with 调用 `ssf_execution_write`（action: "review", changeDir: "<change-dir>", wave: "<wave-id>", base: "<base-sha>", head: "<head-sha>", report: ".superpowers/sdd/reviews/<wave-id>.md", verdict: "<pass|fail>"）（CLI 等价：`ssf execution review <change-dir> --wave <wave-id> --base <base-sha> --head <head-sha> --report .superpowers/sdd/reviews/<wave-id>.md --verdict <pass|fail> --json`）。 The execution plan initializes this directory; paths outside it are rejected for audit safety.
 5. Act on feedback: Critical/Important findings require a `fail` receipt, focused repair, re-review, and replacement `pass` receipt before a dependent wave or closing can proceed. Note Minor for later, push back with reasoning if reviewer is wrong.
 
 ### Minimality And Scope
@@ -152,7 +147,7 @@ When replying to inline review comments on GitHub, reply in the comment thread (
 | Performative agreement | State requirement or just act |
 | Blind implementation | Verify against codebase first |
 | Batch without testing | One at a time, test each |
-| Proceeding without a wave receipt | Record `pass`/`fail` via `ssf execution review` before the next dependent wave |
+| Proceeding without a wave receipt | Record `pass`/`fail` via 调用 `ssf_execution_write`（action: "review", changeDir: "<change-dir>", wave: "<wave-id>", base: "<base-sha>", head: "<head-sha>", report: "<report>", verdict: "<pass|fail>"）（CLI 等价：`ssf execution review <change-dir> --wave <wave-id> --base <base-sha> --head <head-sha> --report <report> --verdict <pass|fail> --json`） before the next dependent wave |
 | Assuming reviewer is right | Check if breaks things |
 | Avoiding pushback | Technical correctness > comfort |
 | Partial implementation | Clarify all items first |

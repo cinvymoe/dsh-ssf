@@ -3,12 +3,7 @@ name: spec-merger
 description: Sync delta specs to main specs before closure. Invoke while an executing change has delta specs to merge into the main spec base, or when detecting spec drift across multiple changes.
 ---
 
-> **Tool-first rule (`dsh-ssf` plugin):** when this skill instructs running a
-> CLI command through `ssf`, prefer the matching native `ssf_*` tool (e.g.
-> `ssf_state`, `ssf_validate`, `ssf_run`) when the `dsh-ssf` plugin is loaded;
-> fall back to executing the exact same command via the `ssf` CLI only when
-> the native tools are unavailable. Commands, arguments, and output handling
-> stay identical on both paths.
+> **Tool-first rule (`dsh-ssf` plugin):** 所有 ssf 操作优先调用 `ssf_*` 原生工具（含写工具）；仅当工具不存在或调用失败时才回退到等价 `ssf` CLI（可经 `ssf_run`）。
 
 # Spec Merger
 
@@ -16,18 +11,12 @@ Before the final `executing → closing` transition, delta specs (ADDED/MODIFIED
 
 ## Execution-State Guard
 
-Before `ssf sync` or any other write, run
-`ssf state get <change-dir> state`.
-Continue only when the persisted state is exactly `executing`. If it is
-`closing` → STOP: "Closing is terminal. Do not route this change to spec-merger;
-synchronization belongs before the final executing → closing transition." For
-any other state, or if the state cannot be read → STOP and route through
-`workflow-start`; do not perform side effects.
+Before `ssf sync` or any other write, run 调用 `ssf_state`（changeDir: "<change-dir>"）（CLI 等价：`ssf state get <change-dir> state`）。 Continue only when the persisted state is exactly `executing`. If it is `closing` → STOP: "Closing is terminal. Do not route this change to spec-merger; synchronization belongs before the final executing → closing transition." For any other state, or if the state cannot be read → STOP and route through `workflow-start`; do not perform side effects.
 
 ## Pre-Flight Checks
 
 ### Conflict Detection
-Run `ssf sync <change-dir>`. If conflicts are detected (same requirement modified by multiple changes), present the conflict list to the user for resolution order.
+调用 `ssf_sync`（changeDir: "<change-dir>"）（CLI 等价：`ssf sync <change-dir>`）。 If conflicts are detected (same requirement modified by multiple changes), present the conflict list to the user for resolution order.
 
 ## Sync Process
 
@@ -70,7 +59,7 @@ Output sync report table: Capability, ADDED/MODIFIED/REMOVED/RENAMED counts, Sta
 
 1. Report results. If no conflicts → ready to archive. If conflicts → user resolves before archive.
 2. Change folder (including deltas) remains for traceability.
-3. `ssf sync` automatically writes a publication receipt to the active change state. Do **not** manually set `spec_merged`: that legacy marker is not closing evidence. The closing guard recomputes the delta and published-baseline hashes, so any later edit requires another sync.
+3. 调用 `ssf_sync`（changeDir: "<change-dir>"）（CLI 等价：`ssf sync <change-dir>`） automatically writes a publication receipt to the active change state. Do **not** manually set `spec_merged`: that legacy marker is not closing evidence. The closing guard recomputes the delta and published-baseline hashes, so any later edit requires another sync.
 4. If the change has no delta sections, no publication receipt is required.
 
 ## Exception Handling

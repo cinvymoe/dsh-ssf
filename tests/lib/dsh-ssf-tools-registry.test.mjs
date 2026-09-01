@@ -1,5 +1,5 @@
 // tests/lib/dsh-ssf-tools-registry.test.mjs
-// Tests for packages/dsh-ssf/lib/tools.js — six structured tool registration
+// Tests for packages/dsh-ssf/lib/tools.js — 19 structured tool registration (6 read + 12 write + ssf_run)
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -23,28 +23,40 @@ describe('dsh-ssf: registerTools()', () => {
     registerTools(ctx, { resolveRoot: () => '/tmp' });
   });
 
-  it('registers the six structured tools plus the ssf_run fallback', () => {
+  it('registers the 19 structured tools (6 read + 12 write + ssf_run fallback)', () => {
     const ids = registered.map((t) => t.name).sort();
     assert.deepEqual(ids, [
+      'ssf_audit',
+      'ssf_checkpoint',
+      'ssf_debug',
       'ssf_execution',
+      'ssf_execution_write',
+      'ssf_finish',
       'ssf_guard',
+      'ssf_handoff',
+      'ssf_inject',
+      'ssf_isolate',
       'ssf_list',
       'ssf_run',
+      'ssf_runtime',
       'ssf_state',
+      'ssf_state_write',
+      'ssf_sync',
       'ssf_validate',
       'ssf_workflow',
+      'ssf_workflow_write',
     ]);
   });
 
-  it('declares changeDir required on all structured tools except ssf_list', () => {
+  it('declares changeDir required on all structured tools except ssf_list and ssf_runtime (optional changeDir)', () => {
     for (const tool of registered) {
       if (tool.name === 'ssf_run') continue; // ssf_run uses the arguments array instead
       const param = tool.parameters?.properties?.changeDir;
       assert.ok(param, `${tool.name} must declare parameters.properties.changeDir`);
       assert.equal(typeof param.type, 'string');
-      const required = (tool.parameters.required ?? []).includes('changeDir');
-      if (tool.name === 'ssf_list') {
-        assert.equal(required, false, 'ssf_list changeDir must not be required');
+      const required = (tool.parameters.required ?? []).includes('changeDir') || param.required === true;
+      if (tool.name === 'ssf_list' || tool.name === 'ssf_runtime') {
+        assert.equal(required, false, `${tool.name} changeDir must not be required`);
       } else {
         assert.equal(required, true, `${tool.name} changeDir must be required`);
       }

@@ -12,7 +12,7 @@ Subagent (general-purpose):
 
     ## CLI repair evidence
 
-    The controller read `ssf execution show <change-dir> --json` before this
+    The controller read `ssf_execution`（changeDir: "<change-dir>"）（CLI 等价：`ssf execution show <change-dir> --json`） before this
     dispatch. The current repair status is [REPAIR_STATUS], round is
     [REPAIR_ROUND], and the prior review head is [PREVIOUS_HEAD]. Read the
     previous review report at [PREVIOUS_REVIEW_REPORT] first.
@@ -40,7 +40,7 @@ Subagent (general-purpose):
     Then provide exactly this receipt command to the controller:
 
     ```bash
-    ssf execution review <change-dir> --wave [WAVE_ID] --base [PREVIOUS_HEAD] --head [HEAD_SHA] --report [REVIEW_REPORT_FILE] --verdict <pass|fail>
+    # 优先调用 `ssf_execution_write`（action: "review", changeDir: "<change-dir>", wave: "[WAVE_ID]", base: "[PREVIOUS_HEAD]", head: "[HEAD_SHA]", report: "[REVIEW_REPORT_FILE]", verdict: "<pass|fail>"）（CLI 等价：`ssf execution review <change-dir> --wave [WAVE_ID] --base [PREVIOUS_HEAD] --head [HEAD_SHA] --report [REVIEW_REPORT_FILE] --verdict <pass|fail>`）
     ```
 
     Use `fail` for any unresolved Critical or Important finding. The controller
@@ -50,3 +50,5 @@ Subagent (general-purpose):
 **Required placeholders:** `[MODEL]`, `[WAVE_ID]`, `[REPAIR_STATUS]`,
 `[REPAIR_ROUND]`, `[PREVIOUS_HEAD]`, `[PREVIOUS_REVIEW_REPORT]`, `[HEAD_SHA]`,
 `[SCOPED_DIFF_FILE]`, `[REVIEW_REPORT_FILE]`.
+
+> 若上述 ssf_* 工具在你的环境不可用，回退到括号内备注的等价 ssf CLI（可经 ssf_run）。

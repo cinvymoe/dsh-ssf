@@ -22,7 +22,7 @@ Subagent (fixer):
     ## Planned Wave
 
     You are assigned to planned wave [WAVE_ID] with strategy [WAVE_STRATEGY].
-    Read `ssf execution show <change-dir> --json` before editing. Do not start
+    Read `ssf_execution`（或 `ssf_execution_write` 的 recommend/show 等价读取，changeDir: "<change-dir>"）（CLI 等价：`ssf execution show <change-dir> --json`） before editing. Do not start
     unless all declared dependencies have `pass` review receipts. A `parallel`
     label permits concurrent dispatch only when the controller confirms the
     platform supports it; never change the saved wave strategy yourself.
@@ -181,3 +181,5 @@ Subagent (fixer):
 - `[REPORT_FILE]` — REQUIRED: the file path where the implementer writes its full report
 
 **Implementer returns:** Status (DONE/DONE_WITH_CONCERNS/BLOCKED/NEEDS_CONTEXT), commits, test summary, concerns, report file path.
+
+> 若上述 ssf_* 工具在你的环境不可用，回退到括号内备注的等价 ssf CLI（可经 ssf_run）。
