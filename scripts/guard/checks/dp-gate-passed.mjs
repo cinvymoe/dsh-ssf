@@ -23,6 +23,12 @@ export function check(changeDir, fromState, toState) {
   }
 
   const state = readState(changeDir);
+  // Fast-path workflows (quick/tweak/lightweight/hotfix) skip the planning phase;
+  // DP-1 is only required for the Full workflow's exploring→specifying transition.
+  if (key === 'exploring→specifying' && state.workflow !== 'full') {
+    return { pass: true, failures: [] };
+  }
+
   const failures = [];
 
   for (const dpField of required) {

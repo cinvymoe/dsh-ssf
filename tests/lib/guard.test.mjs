@@ -762,7 +762,7 @@ describe('guard: workflow-aware transition resolution', () => {
 
   before(() => {
     dir = mkdtempSync(join(tmpdir(), 'ssf-guard-workflow-aware-'));
-    writeFileSync(join(dir, '.spec-superflow.yaml'), 'state: exploring\nworkflow: quick\n');
+    writeFileSync(join(dir, '.spec-superflow.yaml'), 'state: exploring\nworkflow: quick\ndp_1_result: "confirmed: test DP-1"\n');
   });
 
   after(() => {
@@ -807,6 +807,7 @@ describe('guard: workflow-aware transition resolution', () => {
   });
 
   it('still allows exploring→specifying for full (regression)', () => {
+    writeFileSync(join(dir, '.spec-superflow.yaml'), 'state: exploring\nworkflow: full\ndp_1_result: "confirmed: test DP-1"\n');
     const result = run('exploring', 'specifying', 'full');
     assert.equal(result.exitCode, 0, JSON.stringify(result.output));
     assert.deepEqual(result.output.checks, []);
@@ -907,7 +908,7 @@ describe('guard: workflow-aware transition resolution', () => {
       writeFileSync(join(workflowDir, '.spec-superflow.yaml'), 'state: exploring\nworkflow: quick\n');
       const rejected = run('exploring', 'specifying', 'quick');
       assert.equal(rejected.exitCode, 1, JSON.stringify(rejected.output));
-      writeFileSync(join(workflowDir, '.spec-superflow.yaml'), 'state: exploring\nworkflow: full\n');
+      writeFileSync(join(workflowDir, '.spec-superflow.yaml'), 'state: exploring\nworkflow: full\ndp_1_result: "confirmed: test DP-1"\n');
       const released = run('exploring', 'specifying', 'full');
       assert.equal(released.exitCode, 0, JSON.stringify(released.output));
       assert.deepEqual(released.output.checks, []);
