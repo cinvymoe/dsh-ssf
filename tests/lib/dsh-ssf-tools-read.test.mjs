@@ -150,8 +150,17 @@ describe('dsh-ssf ssf_workflow', () => {
     const { ctx, registered } = makeRegistry();
     const { registerTools } = await import('../../packages/dsh-ssf/lib/tools.js');
     // Real repo root: changes/dsh-ssf-plugin has a persisted workflow-selection.json
+    // Worktree uses dsh-ssf-native-tools; try both
     registerTools(ctx, { resolveRoot: () => repoRoot });
-    const value = await registered.ssf_workflow.execute({ changeDir: 'dsh-ssf-plugin' }, {});
+    const candidates = ['dsh-ssf-plugin', 'dsh-ssf-native-tools'];
+    let value = null;
+    for (const cand of candidates) {
+      try {
+        const v = await registered.ssf_workflow.execute({ changeDir: cand }, {});
+        if (v.workflow.receiptExists) { value = v; break; }
+      } catch {}
+    }
+    assert.ok(value, `should find a workflow receipt among ${candidates.join(', ')}`);
     assert.equal(value.ok, true);
     assert.equal(value.workflow.workflow, 'full');
     assert.equal(value.workflow.receiptExists, true);

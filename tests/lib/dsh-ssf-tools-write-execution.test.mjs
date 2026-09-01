@@ -757,7 +757,8 @@ describe('dsh-ssf tools 共性 w3', () => {
     const { registerTools } = await import('../../packages/dsh-ssf/lib/tools.js');
     registerTools(ctx, { resolveRoot: () => tempRoot });
     const ids = Object.keys(registered).sort();
-    const expected = ['ssf_list','ssf_state','ssf_workflow','ssf_execution','ssf_validate','ssf_guard','ssf_run','ssf_state_write','ssf_workflow_write','ssf_execution_write','ssf_checkpoint','ssf_handoff','ssf_debug'].sort();
+    // w4 之后总数为 19（6 read + 12 write + ssf_run），保持原有 9 工具契约不变且新增 10 工具存在
+    const expected = ['ssf_list','ssf_state','ssf_workflow','ssf_execution','ssf_validate','ssf_guard','ssf_run','ssf_state_write','ssf_workflow_write','ssf_execution_write','ssf_checkpoint','ssf_handoff','ssf_debug','ssf_isolate','ssf_finish','ssf_inject','ssf_sync','ssf_audit','ssf_runtime'].sort();
     assert.deepEqual(ids, expected);
     const listVal = await registered.ssf_list.execute({}, {});
     assert.equal(listVal.ok, true);

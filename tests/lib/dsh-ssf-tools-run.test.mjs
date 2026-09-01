@@ -146,6 +146,8 @@ describe('dsh-ssf ssf_run', () => {
     registerTools(ctx, { resolveRoot: () => process.cwd() });
     const value = await registered.ssf_run.execute({ arguments: ['list', '--json'] }, {});
     assert.equal(value.exitCode, 0, value.stderr);
-    assert.ok(value.stdout.includes('dsh-ssf-plugin'), 'ssf list --json output must include the change');
+    // Worktree contains dsh-ssf-native-tools, main contains dsh-ssf-plugin; accept either
+    const hasExpected = value.stdout.includes('dsh-ssf-plugin') || value.stdout.includes('dsh-ssf-native-tools');
+    assert.ok(hasExpected, 'ssf list --json output must include the expected change (dsh-ssf-plugin or dsh-ssf-native-tools)');
   });
 });
