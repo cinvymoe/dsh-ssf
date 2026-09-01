@@ -161,7 +161,7 @@ Subagent (oracle):
     command for the controller:
 
     ```bash
-    ssf execution review <change-dir> --wave [WAVE_ID] --base [BASE_SHA] --head [HEAD_SHA] --report [REVIEW_REPORT_FILE] --verdict <pass|fail>
+    # 优先调用 `ssf_execution_write`（action: "review", changeDir: "<change-dir>", wave: "[WAVE_ID]", base: "[BASE_SHA]", head: "[HEAD_SHA]", report: "[REVIEW_REPORT_FILE]", verdict: "<pass|fail>"）（CLI 等价：`ssf execution review <change-dir> --wave [WAVE_ID] --base [BASE_SHA] --head [HEAD_SHA] --report [REVIEW_REPORT_FILE] --verdict <pass|fail>`）
     ```
 
     Use `fail` for any Critical/Important finding. A repair must be re-reviewed
@@ -208,3 +208,5 @@ Subagent (oracle):
 **Reviewer returns:** Spec Compliance verdict (✅/❌/⚠️), Strengths, Issues (Critical/Important/Minor), Task quality verdict
 
 A fix dispatch can address spec gaps and quality findings together; re-review after fixes covers both verdicts.
+
+> 若上述 ssf_* 工具在你的环境不可用，回退到括号内备注的等价 ssf CLI（可经 ssf_run）。

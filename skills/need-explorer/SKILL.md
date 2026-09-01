@@ -3,12 +3,7 @@ name: need-explorer
 description: Clarify intent, scope, constraints, and success criteria before artifact creation. Invoke when the request is fuzzy, the user is comparing options, or the workflow needs a stable change definition before writing artifacts.
 ---
 
-> **Tool-first rule (`dsh-ssf` plugin):** when this skill instructs running a
-> CLI command through `ssf`, prefer the matching native `ssf_*` tool (e.g.
-> `ssf_state`, `ssf_validate`, `ssf_run`) when the `dsh-ssf` plugin is loaded;
-> fall back to executing the exact same command via the `ssf` CLI only when
-> the native tools are unavailable. Commands, arguments, and output handling
-> stay identical on both paths.
+> **Tool-first rule (`dsh-ssf` plugin):** 所有 ssf 操作优先调用 `ssf_*` 原生工具（含写工具）；仅当工具不存在或调用失败时才回退到等价 `ssf` CLI（可经 `ssf_run`）。
 
 # Need Explorer
 
@@ -60,11 +55,8 @@ For appropriately-scoped changes, proceed to DP-1.
 
 ### 6. DP-1: Requirement Confirmation Gate
 
-After user confirms the summary:
-```bash
-ssf state set <change-dir> dp_1_result "confirmed: <one-line summary>"
-ssf state set <change-dir> dp_1_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ)
-```
+After user confirms the summary: 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_1_result", value: "confirmed: <one-line summary>"）（CLI 等价：`ssf state set <change-dir> dp_1_result "confirmed: <one-line summary>" --json`）和 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_1_timestamp", value: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"）（CLI 等价：`ssf state set <change-dir> dp_1_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ) --json`）。
+
 DP-1 confirms scope, non-goals, and success criteria before artifact creation.
 
 ### 7. Hand Off

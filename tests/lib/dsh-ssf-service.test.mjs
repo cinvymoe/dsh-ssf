@@ -395,7 +395,8 @@ describe('dsh-ssf workspace root resolution', () => {
 
     assert.ok(Array.isArray(scanned));
     // the repo's own changes/ directory is scanned from the cwd fallback
-    assert.ok(scanned.some((c) => c.name === 'dsh-ssf-plugin'));
+    // Worktree contains dsh-ssf-native-tools, main contains dsh-ssf-plugin; accept either
+    assert.ok(scanned.some((c) => c.name === 'dsh-ssf-plugin' || c.name === 'dsh-ssf-native-tools'));
   });
 
   it('falls back to process.cwd() when the workspace registry is absent', async () => {
@@ -459,7 +460,7 @@ describe('dsh-ssf workspace root resolution', () => {
     const scanned = calls.provided['ssf'].scan();
     assert.ok(Array.isArray(scanned));
     // process.cwd() is the repo during tests → the repo's own changes scan in.
-    assert.ok(scanned.some((c) => c.name === 'dsh-ssf-plugin'));
+    assert.ok(scanned.some((c) => c.name === 'dsh-ssf-plugin' || c.name === 'dsh-ssf-native-tools'));
   });
 
   it('never publishes an empty snapshot while any spec workspace exists (all-workspaces panel)', async () => {

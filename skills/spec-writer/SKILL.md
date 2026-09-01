@@ -3,12 +3,7 @@ name: spec-writer
 description: Create or refine spec-superflow planning artifacts. Invoke when the change is understood well enough to write proposal.md, specs/, design.md, and tasks.md.
 ---
 
-> **Tool-first rule (`dsh-ssf` plugin):** when this skill instructs running a
-> CLI command through `ssf`, prefer the matching native `ssf_*` tool (e.g.
-> `ssf_state`, `ssf_validate`, `ssf_run`) when the `dsh-ssf` plugin is loaded;
-> fall back to executing the exact same command via the `ssf` CLI only when
-> the native tools are unavailable. Commands, arguments, and output handling
-> stay identical on both paths.
+> **Tool-first rule (`dsh-ssf` plugin):** 所有 ssf 操作优先调用 `ssf_*` 原生工具（含写工具）；仅当工具不存在或调用失败时才回退到等价 `ssf` CLI（可经 `ssf_run`）。
 
 # Spec Writer
 
@@ -20,7 +15,7 @@ Read `.spec-superflow.yaml` (especially `dp_0_decisions`, `dp_0_confirmed`) and 
 
 ## Config Check
 
-Run: `ssf runtime config --get artifacts.order` — generate in configured order (default: proposal → specs → design → tasks). Run with `artifacts.skip` — skip any listed artifacts.
+调用 `ssf_runtime`（action: "config_get", key: "artifacts.order"）（CLI 等价：`ssf runtime config --get artifacts.order`）— generate in configured order (default: proposal → specs → design → tasks). Run with `artifacts.skip` — skip any listed artifacts.
 
 ## Artifact Roles
 
@@ -96,16 +91,9 @@ If you find issues, fix them inline. No need to re-review — just fix and move 
 
 ## DP-2: Artifact Review Gate
 
-Present a concise summary of all 4 artifacts, then ask one DP-2 question for material adjustments. For Full changes, run one independent five-question blind reader check (problem, command boundary, invalidation boundary, continuation boundary, and document flow) before recording approval; repair only answers the reader cannot derive. After approval:
-```bash
-ssf state set <change-dir> dp_2_result "approved: <summary>"
-ssf state set <change-dir> dp_2_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ)
-```
+Present a concise summary of all 4 artifacts, then ask one DP-2 question for material adjustments. For Full changes, run one independent five-question blind reader check (problem, command boundary, invalidation boundary, continuation boundary, and document flow) before recording approval; repair only answers the reader cannot derive. After approval: 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_2_result", value: "approved: <summary>"）（CLI 等价：`ssf state set <change-dir> dp_2_result "approved: <summary>" --json`）和 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_2_timestamp", value: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"）（CLI 等价：`ssf state set <change-dir> dp_2_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ) --json`）。
 
-After the artifacts are done and DP-2 is recorded, advance the state:
-```bash
-ssf state transition <change-dir> specifying
-```
+After the artifacts are done and DP-2 is recorded, advance the state: 调用 `ssf_state_write`（action: "transition", changeDir: "<change-dir>", target: "specifying"）（CLI 等价：`ssf state transition <change-dir> specifying --json`）。
 
 ## Handoff Rule
 

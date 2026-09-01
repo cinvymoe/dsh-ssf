@@ -3,20 +3,13 @@ name: contract-builder
 description: Convert approved planning artifacts into an execution contract. Invoke when the user wants to start building, asks to move from planning to implementation, or when execution-contract.md is missing or stale.
 ---
 
-> **Tool-first rule (`dsh-ssf` plugin):** when this skill instructs running a
-> CLI command through `ssf`, prefer the matching native `ssf_*` tool (e.g.
-> `ssf_state`, `ssf_validate`, `ssf_run`) when the `dsh-ssf` plugin is loaded;
-> fall back to executing the exact same command via the `ssf` CLI only when
-> the native tools are unavailable. Commands, arguments, and output handling
-> stay identical on both paths.
+> **Tool-first rule (`dsh-ssf` plugin):** 所有 ssf 操作优先调用 `ssf_*` 原生工具（含写工具）；仅当工具不存在或调用失败时才回退到等价 `ssf` CLI（可经 `ssf_run`）。
 
 # Contract Builder
 
-Converts planning artifacts into a single execution handshake: `execution-contract.md`. Load the baseline with `ssf runtime asset read templates/execution-contract.md`.
+Converts planning artifacts into a single execution handshake: `execution-contract.md`. Load the baseline with 调用 `ssf_runtime`（action: "asset_read", path: "templates/execution-contract.md"）（CLI 等价：`ssf runtime asset read templates/execution-contract.md`）。
 
-Read before generating: `.spec-superflow.yaml` (especially `dp_0_decisions`),
-`proposal.md`, `specs/`, `design.md`, `tasks.md`, then load
-`docs/artifact-contract.md` with `ssf runtime asset read docs/artifact-contract.md`.
+Read before generating: `.spec-superflow.yaml` (especially `dp_0_decisions`), `proposal.md`, `specs/`, `design.md`, `tasks.md`, then load `docs/artifact-contract.md` with 调用 `ssf_runtime`（action: "asset_read", path: "docs/artifact-contract.md"）（CLI 等价：`ssf runtime asset read docs/artifact-contract.md`）。
 
 ## Artifact Language
 
@@ -52,17 +45,9 @@ Must make obvious: approved behavior, out-of-scope, constraints, batches, test o
 
 ## Approval Model (DP-3)
 
-After drafting: summarize handoff rules, identify ambiguity, flag unmapped requirements, ask user to approve explicitly. After approval:
-```bash
-ssf state set <change-dir> dp_3_result "approved: <summary>"
-ssf state set <change-dir> dp_3_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ)
-```
+After drafting: summarize handoff rules, identify ambiguity, flag unmapped requirements, ask user to approve explicitly. After approval: 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_3_result", value: "approved: <summary>"）（CLI 等价：`ssf state set <change-dir> dp_3_result "approved: <summary>" --json`）和 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_3_timestamp", value: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"）（CLI 等价：`ssf state set <change-dir> dp_3_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ) --json`）。
 
-Advance the state after approval:
-```bash
-ssf state transition <change-dir> bridging
-ssf state transition <change-dir> approved-for-build
-```
+Advance the state after approval: 调用 `ssf_state_write`（action: "transition", changeDir: "<change-dir>", target: "bridging"）（CLI 等价：`ssf state transition <change-dir> bridging --json`）和 调用 `ssf_state_write`（action: "transition", changeDir: "<change-dir>", target: "approved-for-build"）（CLI 等价：`ssf state transition <change-dir> approved-for-build --json`）。
 
 DP-3 is a hard gate — no implementation without this record.
 
@@ -83,9 +68,9 @@ Generate a minimal contract only for a legacy Hotfix: Intent Lock (one sentence)
 
 ## Post-Generation
 
-Run `ssf state init <change-dir>` to create `.spec-superflow.yaml` with hashes.
+调用 `ssf_state_write`（action: "init", changeDir: "<change-dir>"）（CLI 等价：`ssf state init <change-dir> --json`） to create `.spec-superflow.yaml` with hashes.
 
-For a legacy Hotfix, after writing the minimal contract, run `ssf state init <change-dir>` or `ssf state rebuild <change-dir>` so `contract_hash` is recorded. DP-3 remains mandatory before build.
+For a legacy Hotfix, after writing the minimal contract, run 调用 `ssf_state_write`（action: "init", changeDir: "<change-dir>"）（CLI 等价：`ssf state init <change-dir> --json`） or 调用 `ssf_state_write`（action: "rebuild", changeDir: "<change-dir>"）（CLI 等价：`ssf state rebuild <change-dir> --json`） so `contract_hash` is recorded. DP-3 remains mandatory before build.
 
 ## Exception Handling
 

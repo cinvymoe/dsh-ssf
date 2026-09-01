@@ -19,7 +19,7 @@ Host half (`lib/index.js`):
   `0700`/`0600` and written atomically; `GET /dsh-ssf/snapshot` (via
   `ctx.webServer`) serves the in-memory snapshot with `Cache-Control: no-store`.
 
-Structured tools (`lib/tools.js`, registered on `ctx.tools`):
+Structured tools (`lib/tools.js`, registered on `ctx.tools`): 19 `ssf_*` tools (6 read + 12 write + `ssf_run` fallback — 19 total; `ssf_run` retained for uncovered subcommands):
 
 | Tool | Purpose |
 |---|---|
@@ -29,7 +29,19 @@ Structured tools (`lib/tools.js`, registered on `ctx.tools`):
 | `ssf_execution` | Persisted execution plan summary (waves + eligibility) |
 | `ssf_validate` | Artifact validation report (proposal + delta specs) |
 | `ssf_guard` | Phase-transition guard check (from/to states) |
-| `ssf_run` | Fallback: run any `ssf` subcommand, return stdout/stderr/exit code |
+| `ssf_state_write` | Write state machine fields for a change (init/set/transition/rebuild) |
+| `ssf_workflow_write` | Write workflow selection for a change (recommend/select/accept/evidence/escalate) |
+| `ssf_execution_write` | Write execution plan for a change (recommend/plan/revise/resync/review) |
+| `ssf_checkpoint` | Manage checkpoints for a change (save/list/show) |
+| `ssf_handoff` | Manage handoff contracts for a change (create/list/finish/resolve) |
+| `ssf_debug` | Manage debugging attempts for a change (record_attempt/show_attempts/escalate) |
+| `ssf_isolate` | Isolate a change into a git worktree (--force/--isolate) |
+| `ssf_finish` | Finish a change (merge, verify, clean worktree) |
+| `ssf_inject` | Generate phase-guard injection artifacts |
+| `ssf_sync` | Publish delta as canonical baseline specs |
+| `ssf_audit` | Generate decision-point audit report |
+| `ssf_runtime` | Execute runtime operations (asset_read/config_get/resolve_model/check_update/infer) |
+| `ssf_run` | Fallback: run any `ssf` subcommand, return stdout/stderr/exit code — retained for commands not covered by the 18 structured tools |
 
 Browser half (`client.js`): the **Spec 工作流** conversation tab
 (id `ssf`, order 20) — polls `GET /dsh-ssf/snapshot` every 3s (plus

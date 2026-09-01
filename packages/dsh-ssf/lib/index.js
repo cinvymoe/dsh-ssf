@@ -52,8 +52,7 @@ Scope:
 - Do NOT apply to ordinary coding tasks without that context.
 
 Tool-first:
-- Prefer structured \`ssf_*\` tools over running \`ssf\` CLI in shell.
-- Use \`ssf_run\` only for subcommands not covered by the structured tools.
+- 所有 ssf 操作优先结构化 ssf_* 工具（含写工具）；ssf_run 仅用于未覆盖的子命令。
 
 Recommended tool order:
 1. \`ssf_list\` — list all changes with state-machine summary
@@ -69,6 +68,14 @@ Recommended tool order:
 6. \`ssf_guard\` — run phase-transition guard (DP gates + artifact conditions)
    for \`fromState → toState\`; MUST pass before any state transition —
    never mutate state manually when guard fails.
+
+Write tools — by domain (native ssf_* write tools via CLI runner):
+- 状态: \`ssf_state_write\` — Write state machine fields for a change (init/set/transition/rebuild).
+- 工作流: \`ssf_workflow_write\` — Write workflow selection for a change (recommend/select/accept/evidence/escalate).
+- 执行: \`ssf_execution_write\` — Write execution plan for a change (recommend/plan/revise/resync/review).
+- 协作: \`ssf_checkpoint\` — Manage checkpoints for a change (save/list/show); \`ssf_handoff\` — Manage handoff contracts (create/list/finish/resolve); \`ssf_debug\` — Manage debugging attempts (record_attempt/show_attempts/escalate).
+- 生命周期: \`ssf_isolate\` — Isolate a change into a git worktree (--force/--isolate); \`ssf_finish\` — Finish a change (merge, verify, clean worktree); \`ssf_inject\` — Generate phase-guard injection artifacts; \`ssf_sync\` — Publish delta as canonical baseline specs.
+- runtime: \`ssf_audit\` — Generate a decision-point audit report; \`ssf_runtime\` — Execute runtime operations (asset_read/config_get/resolve_model/check_update/infer).
 
 Keep artifacts under \`changes/<changeDir>/\` and drive every transition through the guarded tool sequence above.
 

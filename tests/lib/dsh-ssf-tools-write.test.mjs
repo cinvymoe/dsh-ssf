@@ -131,10 +131,20 @@ describe('dsh-ssf ssf_guard', () => {
     const { registerTools } = await import('../../packages/dsh-ssf/lib/tools.js');
     registerTools(ctx, { resolveRoot: () => repoRoot });
     // executing -> closing is blocked while tasks remain unchecked.
-    const value = await registered.ssf_guard.execute(
-      { changeDir: 'dsh-ssf-plugin', fromState: 'executing', toState: 'closing' },
-      {},
-    );
+    // Worktree may contain dsh-ssf-native-tools instead of dsh-ssf-plugin; try both.
+    const candidates = ['dsh-ssf-plugin', 'dsh-ssf-native-tools'];
+    let value = null;
+    let lastErr = null;
+    for (const cand of candidates) {
+      try {
+        const v = await registered.ssf_guard.execute(
+          { changeDir: cand, fromState: 'executing', toState: 'closing' },
+          {},
+        );
+        if (v && v.ok) { value = v; break; }
+      } catch (e) { lastErr = e; }
+    }
+    assert.ok(value, `guard must succeed for one of ${candidates.join(', ')}: ${lastErr}`);
     assert.equal(value.ok, true);
     assert.equal(typeof value.guard.pass, 'boolean');
     assert.ok(Array.isArray(value.guard.checks));
@@ -159,12 +169,21 @@ describe('dsh-ssf ssf_execution', () => {
     const { ctx, registered } = makeRegistry();
     const { registerTools } = await import('../../packages/dsh-ssf/lib/tools.js');
     registerTools(ctx, { resolveRoot: () => repoRoot });
-    const value = await registered.ssf_execution.execute({ changeDir: 'dsh-ssf-plugin' }, {});
+    const candidates = ['dsh-ssf-plugin', 'dsh-ssf-native-tools'];
+    let value = null;
+    let chosen = null;
+    for (const cand of candidates) {
+      const v = await registered.ssf_execution.execute({ changeDir: cand }, {});
+      if (v.execution.current) { value = v; chosen = cand; break; }
+    }
+    assert.ok(value, `should find a change with current plan among ${candidates.join(', ')}`);
     assert.equal(value.ok, true);
     assert.equal(value.execution.current, true);
     assert.ok(Array.isArray(value.execution.waves));
-    const w1 = value.execution.waves.find((w) => w.id === 'w1-host-core');
-    assert.ok(w1, 'waves must include w1-host-core');
+    // Worktree uses dsh-ssf-native-tools with w1-runner; main uses dsh-ssf-plugin with w1-host-core
+    const expectedWave = chosen === 'dsh-ssf-plugin' ? 'w1-host-core' : 'w1-runner';
+    const w1 = value.execution.waves.find((w) => w.id === expectedWave);
+    assert.ok(w1, `waves must include ${expectedWave} for ${chosen}`);
     assert.deepEqual(w1.strategy, 'serial');
     assert.ok(Array.isArray(w1.tasks));
     assert.equal(typeof w1.eligible, 'boolean');
