@@ -35,6 +35,12 @@ const TOOL_IDS = [
   'ssf_checkpoint',
   'ssf_handoff',
   'ssf_debug',
+  'ssf_isolate',
+  'ssf_finish',
+  'ssf_inject',
+  'ssf_sync',
+  'ssf_audit',
+  'ssf_runtime',
 ];
 
 /** Envelope for the ssf_* structured outputs (ok + domain payload). */
@@ -103,6 +109,12 @@ const OUTPUTS = {
   ssf_checkpoint: WRITE_OUTPUT,
   ssf_handoff: WRITE_OUTPUT,
   ssf_debug: WRITE_OUTPUT,
+  ssf_isolate: WRITE_OUTPUT,
+  ssf_finish: WRITE_OUTPUT,
+  ssf_inject: WRITE_OUTPUT,
+  ssf_sync: WRITE_OUTPUT,
+  ssf_audit: WRITE_OUTPUT,
+  ssf_runtime: WRITE_OUTPUT,
 };
 
 const DESCRIPTIONS = {
@@ -118,6 +130,12 @@ const DESCRIPTIONS = {
   ssf_checkpoint: 'Manage checkpoints for a spec-superflow change (save/list/show) via the native CLI.',
   ssf_handoff: 'Manage handoff contracts for a spec-superflow change (create/list/finish/resolve) via the native CLI.',
   ssf_debug: 'Manage debugging attempts for a spec-superflow change (record_attempt/show_attempts/escalate) via the native CLI.',
+  ssf_isolate: 'Isolate a spec-superflow change into a git worktree (supports --force/--isolate modes) via the native CLI.',
+  ssf_finish: 'Finish a spec-superflow change (merge, verify, clean worktree) via the native CLI.',
+  ssf_inject: 'Generate phase-guard injection artifacts for a spec-superflow change via the native CLI.',
+  ssf_sync: 'Publish a spec-superflow change delta as canonical baseline specs via the native CLI.',
+  ssf_audit: 'Generate a decision-point audit report for a spec-superflow change via the native CLI.',
+  ssf_runtime: 'Execute runtime operations (asset_read/config_get/resolve_model/check_update/infer) via the native CLI.',
 };
 
 /**
@@ -191,6 +209,8 @@ export function registerTools(ctx, { resolveRoot, onBind }) {
   const HANDOFF_DECISION_ENUM = ['accept', 'reject', 'defer'];
   const DEBUG_ACTIONS = ['record_attempt', 'show_attempts', 'escalate'];
   const DEBUG_DECISION_ENUM = ['continue', 'abandon'];
+  const ISOLATE_MODE_ENUM = ['none', 'force', 'isolate'];
+  const RUNTIME_ACTION_ENUM = ['asset_read', 'config_get', 'resolve_model', 'check_update', 'infer'];
 
   function assertEnum(value, allowed, fieldName) {
     if (value !== undefined && value !== null && !allowed.includes(value)) {
@@ -206,6 +226,12 @@ export function registerTools(ctx, { resolveRoot, onBind }) {
     const isCheckpoint = id === 'ssf_checkpoint';
     const isHandoff = id === 'ssf_handoff';
     const isDebug = id === 'ssf_debug';
+    const isIsolate = id === 'ssf_isolate';
+    const isFinish = id === 'ssf_finish';
+    const isInject = id === 'ssf_inject';
+    const isSync = id === 'ssf_sync';
+    const isAudit = id === 'ssf_audit';
+    const isRuntime = id === 'ssf_runtime';
 
     if (isStateWrite) {
       ctx.tools.register(defineTool({
@@ -629,6 +655,220 @@ export function registerTools(ctx, { resolveRoot, onBind }) {
             throw new Error(`ssf_debug: invalid action "${action}"`);
           }
           return await runner.runSsf({ args: cliArgs, changeDir: args.changeDir, json: true, exec });
+        },
+      }));
+      continue;
+    }
+
+    if (isIsolate) {
+      ctx.tools.register(defineTool({
+        name: id,
+        description: DESCRIPTIONS[id],
+        parameters: {
+          changeDir: { type: 'string', required: true, description: 'Change directory name, relative to the workspace changes/ directory.' },
+          mode: { type: 'string', enum: ISOLATE_MODE_ENUM, default: 'none', description: 'Isolation mode (none/force/isolate).' },
+          name: { type: 'string', description: 'Change name for isolate (optional).' },
+        },
+        output: {
+          schema: OUTPUTS[id],
+          render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+        },
+        async execute(args, exec) {
+          const root = resolveRoot();
+          resolveChangePath(root, args.changeDir);
+          const mode = args.mode ?? 'none';
+          if (!ISOLATE_MODE_ENUM.includes(mode)) {
+            throw new Error(`invalid mode: must be one of ${ISOLATE_MODE_ENUM.join(', ')}`);
+          }
+          const dir = `changes/${args.changeDir}`;
+          const cliArgs = ['isolate', dir];
+          if (args.name) cliArgs.push(args.name);
+          if (mode === 'force') cliArgs.push('--force');
+          else if (mode === 'isolate') cliArgs.push('--isolate');
+          return await runner.runSsf({ args: cliArgs, changeDir: args.changeDir, json: false, exec, graceMs: 30000 });
+        },
+      }));
+      continue;
+    }
+
+    if (isFinish) {
+      ctx.tools.register(defineTool({
+        name: id,
+        description: DESCRIPTIONS[id],
+        parameters: {
+          changeDir: { type: 'string', required: true, description: 'Change directory name, relative to the workspace changes/ directory.' },
+          testCmd: { type: 'string', description: 'Test command override for finish verification.' },
+        },
+        output: {
+          schema: OUTPUTS[id],
+          render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+        },
+        async execute(args, exec) {
+          const root = resolveRoot();
+          resolveChangePath(root, args.changeDir);
+          const dir = `changes/${args.changeDir}`;
+          const cliArgs = ['finish', dir];
+          if (args.testCmd) cliArgs.push('--test-cmd', args.testCmd);
+          return await runner.runSsf({ args: cliArgs, changeDir: args.changeDir, json: false, exec, graceMs: 30000 });
+        },
+      }));
+      continue;
+    }
+
+    if (isInject) {
+      ctx.tools.register(defineTool({
+        name: id,
+        description: DESCRIPTIONS[id],
+        parameters: {
+          changeDir: { type: 'string', required: true, description: 'Change directory name, relative to the workspace changes/ directory.' },
+          platforms: { type: 'string', description: 'Comma-separated platforms for inject (optional).' },
+        },
+        output: {
+          schema: OUTPUTS[id],
+          render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+        },
+        async execute(args, exec) {
+          const root = resolveRoot();
+          resolveChangePath(root, args.changeDir);
+          const dir = `changes/${args.changeDir}`;
+          const cliArgs = ['inject', dir];
+          if (args.platforms) cliArgs.push('--platforms', args.platforms);
+          return await runner.runSsf({ args: cliArgs, changeDir: args.changeDir, json: true, exec, graceMs: 30000 });
+        },
+      }));
+      continue;
+    }
+
+    if (isSync) {
+      ctx.tools.register(defineTool({
+        name: id,
+        description: DESCRIPTIONS[id],
+        parameters: {
+          changeDir: { type: 'string', required: true, description: 'Change directory name, relative to the workspace changes/ directory.' },
+        },
+        output: {
+          schema: OUTPUTS[id],
+          render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+        },
+        async execute(args, exec) {
+          const root = resolveRoot();
+          resolveChangePath(root, args.changeDir);
+          const dir = `changes/${args.changeDir}`;
+          const cliArgs = ['sync', dir];
+          return await runner.runSsf({ args: cliArgs, changeDir: args.changeDir, json: false, exec, graceMs: 30000 });
+        },
+      }));
+      continue;
+    }
+
+    if (isAudit) {
+      ctx.tools.register(defineTool({
+        name: id,
+        description: DESCRIPTIONS[id],
+        parameters: {
+          changeDir: { type: 'string', required: true, description: 'Change directory name, relative to the workspace changes/ directory.' },
+        },
+        output: {
+          schema: OUTPUTS[id],
+          render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+        },
+        async execute(args, exec) {
+          const root = resolveRoot();
+          resolveChangePath(root, args.changeDir);
+          const dir = `changes/${args.changeDir}`;
+          const cliArgs = ['audit', dir];
+          return await runner.runSsf({ args: cliArgs, changeDir: args.changeDir, json: true, exec, graceMs: 30000 });
+        },
+      }));
+      continue;
+    }
+
+    if (isRuntime) {
+      ctx.tools.register(defineTool({
+        name: id,
+        description: DESCRIPTIONS[id],
+        parameters: {
+          changeDir: { type: 'string', description: 'Change directory name, relative to the workspace changes/ directory (required for infer).' },
+          action: { type: 'string', required: true, enum: RUNTIME_ACTION_ENUM, description: 'Runtime operation to perform.' },
+          path: { type: 'string', description: 'Asset path for asset_read.' },
+          key: { type: 'string', description: 'Config key for config_get.' },
+          profile: { type: 'string', description: 'Profile name for resolve_model.' },
+        },
+        output: {
+          schema: OUTPUTS[id],
+          render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+        },
+        async execute(args, exec) {
+          const root = resolveRoot();
+          const action = args.action;
+          if (action === undefined || action === null) {
+            throw new Error('ssf_runtime: action is required');
+          }
+          if (!RUNTIME_ACTION_ENUM.includes(action)) {
+            throw new Error(`invalid action: must be one of ${RUNTIME_ACTION_ENUM.join(', ')}`);
+          }
+          // changeDir pre-validation: non-empty then validate; infer requires it
+          if (args.changeDir !== undefined && args.changeDir !== null && args.changeDir !== '') {
+            resolveChangePath(root, args.changeDir);
+          }
+          if (action === 'asset_read') {
+            if (!args.path) {
+              throw new Error('ssf_runtime asset_read: path is required');
+            }
+            if (isAbsolute(args.path) || args.path.split('/').includes('..')) {
+              throw new Error(`invalid path: traversal or absolute path not allowed (${args.path})`);
+            }
+            const cliArgs = ['runtime', 'asset', 'read', args.path];
+            return await runner.runSsf({ args: cliArgs, changeDir: args.changeDir || undefined, json: false, exec, graceMs: 30000 });
+          }
+          if (action === 'config_get') {
+            if (!args.key) {
+              throw new Error('ssf_runtime config_get: key is required');
+            }
+            const cliArgs = ['runtime', 'config', '--get', args.key];
+            return await runner.runSsf({ args: cliArgs, changeDir: args.changeDir || undefined, json: false, exec, graceMs: 30000 });
+          }
+          if (action === 'resolve_model') {
+            if (!args.profile) {
+              throw new Error('ssf_runtime resolve_model: profile is required');
+            }
+            const cliArgs = ['runtime', 'config', '--resolve-model', args.profile];
+            return await runner.runSsf({ args: cliArgs, changeDir: args.changeDir || undefined, json: true, exec, graceMs: 30000 });
+          }
+          if (action === 'check_update') {
+            const cliArgs = ['runtime', 'check-update'];
+            const res = await runner.runSsf({ args: cliArgs, changeDir: args.changeDir || undefined, json: true, exec, graceMs: 30000 });
+            if ([0, 1, 2].includes(res.exitCode)) {
+              let outcome;
+              if (res.result && typeof res.result.outcome === 'string') {
+                outcome = res.result.outcome;
+              } else {
+                const map = { 0: 'continue', 1: 'upgrade-reminder', 2: 'skip' };
+                outcome = map[res.exitCode];
+              }
+              let finalResult;
+              if (res.result && typeof res.result === 'object' && 'outcome' in res.result) {
+                finalResult = res.result;
+              } else if (res.result && typeof res.result === 'object') {
+                finalResult = { ...res.result, outcome };
+              } else {
+                finalResult = { outcome };
+              }
+              return { ok: true, exitCode: res.exitCode, stdout: res.stdout, stderr: res.stderr, result: finalResult };
+            }
+            return res;
+          }
+          if (action === 'infer') {
+            if (!args.changeDir) {
+              throw new Error('ssf_runtime infer: changeDir is required');
+            }
+            // already validated above, but ensure again for empty check
+            resolveChangePath(root, args.changeDir);
+            const dir = `changes/${args.changeDir}`;
+            const cliArgs = ['runtime', 'infer', dir];
+            return await runner.runSsf({ args: cliArgs, changeDir: args.changeDir, json: true, exec, graceMs: 30000 });
+          }
+          throw new Error(`ssf_runtime: invalid action "${action}"`);
         },
       }));
       continue;
