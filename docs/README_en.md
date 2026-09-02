@@ -154,7 +154,7 @@ npm install -g spec-superflow
 
 ### Version
 
-- Current: `v1.0.1`
+- Current: `v1.2.0`
 - v1.0: Quick, direct Hotfix, Tweak, and Full paths keep small changes bounded while reserving planning, contracts, and reviews for complex work.
 - Self-contained — no OpenSpec or Superpowers runtime required
 - Upstream: [Fission-AI/OpenSpec](https://github.com/Fission-AI/OpenSpec), [obra/superpowers](https://github.com/obra/superpowers)
@@ -312,6 +312,8 @@ ssf execution revise changes/my-change --mode sdd --confirm --reason "need paral
   --wave integration:serial:2.1:foundation
 ssf execution review changes/my-change --wave foundation --base <sha> --head <sha> \
   --report .superpowers/sdd/reviews/foundation.md --verdict pass
+ssf execution adjudicate changes/my-change --wave foundation --decision allow-review \
+  --confirm --reason "reviewed the unresolved findings and authorizes one focused review"
 ```
 
 The `--report` path is resolved relative to `<change>` and must remain under
@@ -323,6 +325,8 @@ non-symlink file.
 
 Every planned wave needs a current `pass` review receipt before dependent
 waves or closing may proceed; revising a plan invalidates earlier receipts.
+Adjudication never creates a pass or releases dependents. A failed authorized
+review returns the wave to `adjudication-required` and needs a new human decision.
 Recovery, switching, and manual save form a control-plane overlay, not a ninth
 workflow state; their CLI and CodeBuddy/WorkBuddy Markdown adapters keep the
 same guards.

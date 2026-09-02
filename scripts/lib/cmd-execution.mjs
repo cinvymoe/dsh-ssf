@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util';
-import { createPlan, describeWaves, EXECUTION_MODES, readPlan, recordReview, resyncPlan, validatePlan, writePlan } from './execution-plan.mjs';
+import { adjudicateWave, createPlan, describeWaves, EXECUTION_MODES, readPlan, recordReview, resyncPlan, validatePlan, writePlan } from './execution-plan.mjs';
 import {
   createRecommendationReceipt,
   readCurrentRecommendationReceipt,
@@ -8,7 +8,7 @@ import {
 import { readState, writeState } from './state-loader.mjs';
 import { warnIfDiverged } from './worktree-authority.mjs';
 
-const SUBCOMMANDS = ['recommend', 'plan', 'show', 'revise', 'review', 'resync'];
+const SUBCOMMANDS = ['recommend', 'plan', 'show', 'revise', 'review', 'adjudicate', 'resync'];
 
 export function run(args, io = { stdout: process.stdout, stderr: process.stderr }) {
   const { positionals, values } = parseArgs({
@@ -23,6 +23,7 @@ export function run(args, io = { stdout: process.stdout, stderr: process.stderr 
       head: { type: 'string' },
       report: { type: 'string' },
       verdict: { type: 'string' },
+      decision: { type: 'string' },
       json: { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
     },
@@ -53,10 +54,29 @@ export function run(args, io = { stdout: process.stdout, stderr: process.stderr 
     case 'review':
       recordAndPrintReview(changeDir, values, io);
       return { exitCode: 0 };
+    case 'adjudicate':
+      adjudicateAndPrint(changeDir, values, io);
+      return { exitCode: 0 };
     case 'resync':
       resyncAndPrint(changeDir, values, io);
       return { exitCode: 0 };
   }
+}
+
+function adjudicateAndPrint(changeDir, values, io) {
+  requireOption(values.wave?.[0], '--wave');
+  if (values.wave.length !== 1) throw new Error('Adjudication requires exactly one --wave value');
+  if (values.decision !== 'allow-review') throw new Error("--decision must be 'allow-review'");
+  requireOption(values.reason, '--reason');
+  requireSafeReason(values.reason);
+  if (!values.confirm) throw new Error('Adjudication requires --confirm after human review of the failure chain');
+  const adjudication = adjudicateWave(changeDir, values.wave[0], {
+    decision: values.decision,
+    reason: values.reason,
+    confirmed: true,
+  });
+  print(values.json, { ok: true, wave: values.wave[0], adjudication },
+    `Review authorization for ${values.wave[0]} recorded: ${adjudication.id}.`, io);
 }
 
 function createAndPrintPlan(changeDir, values, revise, io) {
@@ -231,5 +251,6 @@ function printHelp(io) {
   ssf execution show <dir> [--json]
   ssf execution revise <dir> --mode sdd --confirm --reason <text> --wave <id>:<strategy>:<task,...>[:<depends-on,...>] [--acknowledge-recommendation]
   ssf execution review <dir> --wave <id> --base <sha> --head <sha> --report <path> --verdict pass|fail
+  ssf execution adjudicate <dir> --wave <id> --decision allow-review --confirm --reason <text>
   ssf execution resync <dir> --confirm --reason <text>\n`);
 }

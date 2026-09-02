@@ -149,14 +149,28 @@ export function recordReview(changeDir, waveId, receipt, options = {}) {
     throw new Error(`Wave '${waveId}' cannot be reviewed while its failed report evidence is invalid: ${currentReview.blocker}`);
   }
   const previousReceipt = currentReview.receipt;
-  const previousRepair = readRepairState(changeDir, plan, waveId);
+  const previousRepair = readRepairState(
+    changeDir,
+    plan,
+    waveId,
+    previousReceipt?.status === 'fail' ? previousReceipt : null,
+  );
+  let authorization = null;
   if (previousRepair?.status === 'adjudication-required') {
-    throw new Error(`Wave '${waveId}' requires adjudication before another review can be recorded`);
+    authorization = readActiveAdjudication(changeDir, plan, waveId, previousRepair, previousReceipt);
+    if (!authorization) {
+      throw new Error(`Wave '${waveId}' requires adjudication before another review can be recorded`);
+    }
   }
   if (previousReceipt?.status === 'pass') {
     throw new Error(`Wave '${waveId}' already has a passing review receipt`);
   }
-  validateRepairContinuity(previousReceipt, previousRepair, { status: receipt.status, base, head, report: reportEvidence.path });
+  validateRepairContinuity(
+    previousReceipt,
+    previousRepair,
+    { status: receipt.status, base, head, report: reportEvidence.path },
+    { allowRepeatedRange: authorization === null },
+  );
 
   const savedReceipt = {
     status: receipt.status,
@@ -175,6 +189,7 @@ export function recordReview(changeDir, waveId, receipt, options = {}) {
   atomicWrite(join(paths.reviews, `${safeFileName(waveId)}.json`), serializedReceipt);
   atomicWrite(join(planPaths.reviews, `${safeFileName(waveId)}.json`), serializedReceipt);
   updateRepairState(changeDir, plan, waveId, previousRepair, previousReceipt, savedReceipt);
+  if (authorization) consumeAdjudication(changeDir, plan, waveId, authorization.id, savedReceipt);
   if (savedReceipt.status === 'pass') {
     // Task briefs, diff packages, and progress notes are regenerable for this
     // exact plan. Receipt and repair evidence deliberately live beside, not in,
@@ -182,6 +197,59 @@ export function recordReview(changeDir, waveId, receipt, options = {}) {
     rmSync(getPlanScopedPaths(changeDir, plan).workspace, { recursive: true, force: true });
   }
   return savedReceipt;
+}
+
+/**
+ * Persists an explicit human decision that authorizes exactly one additional
+ * review for the current adjudication-required repair chain.
+ */
+export function adjudicateWave(changeDir, waveId, input) {
+  const plan = readPlan(changeDir);
+  const validation = validatePlan(changeDir, plan);
+  if (!validation.valid) throw new Error(`Cannot adjudicate an invalid execution plan: ${validation.failures.join('; ')}`);
+  const wave = Array.isArray(plan?.waves) && plan.waves.find(candidate => candidate?.id === waveId);
+  if (!wave) throw new Error(`Adjudication references unknown wave '${waveId}'`);
+  if (input?.decision !== 'allow-review') throw new Error("Adjudication decision must be 'allow-review'");
+  if (input?.confirmed !== true) throw new Error('Adjudication requires confirmed human review of the failure chain');
+  requireText(input?.reason, 'adjudication.reason');
+  if (/[\p{Cc}\p{Zl}\p{Zp}]/u.test(input.reason)) {
+    throw new Error('Adjudication reason must not contain control characters or line separators');
+  }
+
+  const currentReview = readCurrentReviewEvidence(changeDir, waveId, plan);
+  if (currentReview.blocker) {
+    throw new Error(`Wave '${waveId}' cannot be adjudicated while its failed report evidence is invalid: ${currentReview.blocker}`);
+  }
+  const receipt = currentReview.receipt;
+  const repair = readRepairState(changeDir, plan, waveId, receipt);
+  if (receipt?.status !== 'fail' || repair?.status !== 'adjudication-required') {
+    throw new Error(`Wave '${waveId}' is not adjudication-required`);
+  }
+  if (readActiveAdjudication(changeDir, plan, waveId, repair, receipt)) {
+    throw new Error(`Wave '${waveId}' already has an active review authorization`);
+  }
+
+  const ledger = readAdjudicationLedger(changeDir, plan, waveId) ?? {
+    plan_hash: plan.hash,
+    plan_revision: plan.revision,
+    wave_id: waveId,
+    adjudications: [],
+  };
+  const authorization = {
+    id: randomUUID(),
+    status: 'authorized',
+    decision: input.decision,
+    confirmed: true,
+    reason: input.reason.trim(),
+    failure_count: repair.failure_count,
+    previous_head: repair.previous_head,
+    previous_report: repair.previous_report,
+    failed_receipt: adjudicationReceiptEvidence(receipt, waveId),
+    authorized_at: new Date().toISOString(),
+  };
+  ledger.adjudications.push(authorization);
+  writeAdjudicationLedger(changeDir, plan, waveId, ledger);
+  return { ...authorization, active: true };
 }
 
 /**
@@ -208,9 +276,17 @@ export function resyncPlan(changeDir, { reason } = {}) {
     throw new Error('Execution plan is not stale: no need to resync until its artifacts hash differs from the current snapshot');
   }
 
-  const failedWaves = (plan.waves ?? [])
-    .filter(wave => readCurrentReviewEvidence(changeDir, wave.id, plan).receipt?.status === 'fail')
-    .map(wave => wave.id);
+  const reviewEvidenceByWave = (plan.waves ?? []).map(wave => ({
+    wave,
+    review: readCurrentReviewEvidence(changeDir, wave.id, plan),
+  }));
+  const invalidReview = reviewEvidenceByWave.find(({ review }) => review.blocker);
+  if (invalidReview) {
+    throw new Error(`Cannot resync while wave '${invalidReview.wave.id}' has invalid review evidence: ${invalidReview.review.blocker}`);
+  }
+  const failedWaves = reviewEvidenceByWave
+    .filter(({ review }) => review.receipt?.status === 'fail')
+    .map(({ wave }) => wave.id);
   if (failedWaves.length > 0) {
     throw new Error(`Cannot resync while repair chains are open; waves with fail receipts must close their repair loop first: ${failedWaves.join(', ')}`);
   }
@@ -225,7 +301,8 @@ export function resyncPlan(changeDir, { reason } = {}) {
 
   try {
     const previousArtifactsHash = plan.artifacts_hash;
-    const previousIdentity = getPlanScopedPaths(changeDir, plan);
+    const previousPlan = structuredClone(plan);
+    const previousIdentity = getPlanScopedPaths(changeDir, previousPlan);
 
     // The frozen receipt inside the plan references the artifacts snapshot it
     // certified; resync deliberately refreshes that reference together with
@@ -264,12 +341,23 @@ export function resyncPlan(changeDir, { reason } = {}) {
       new Set([getOverlayPaths(changeDir).reviews, migratedIdentity.reviews]),
       writeWithUndo,
       plan,
+      previousPlan.hash,
     );
-    migrateReceiptsPlanHashWithUndo(
-      [previousIdentity.repairState],
-      new Set([migratedIdentity.repairState, previousIdentity.repairState]),
+    // Validate and migrate adjudications while their referenced repair-state
+    // chain is still available under the previous plan identity.
+    migratePlanScopedEvidenceDirectoryWithUndo(
+      previousIdentity.adjudications,
+      migratedIdentity.adjudications,
       writeWithUndo,
-      plan,
+      undoLog,
+      record => migrateAdjudicationLedgerRecord(changeDir, record, previousPlan, plan),
+    );
+    migratePlanScopedEvidenceDirectoryWithUndo(
+      previousIdentity.repairState,
+      migratedIdentity.repairState,
+      writeWithUndo,
+      undoLog,
+      record => migrateRepairStateRecord(changeDir, record, previousPlan, plan),
     );
 
     // Checkpoints, handoffs, and the workspace carry no plan_hash field of
@@ -343,7 +431,7 @@ function restoreUndoLog(undoLog) {
 
 // 与旧版 migrateReceiptsPlanHash 相同的收敛逻辑，但每次写入经 writeWithUndo
 // 记入撤销日志。文件旧的 JSON 解析失败则跳过（与既有行为一致）。
-function migrateReceiptsPlanHashWithUndo(sourceDirectories, targetDirectories, writeWithUndo, plan) {
+function migrateReceiptsPlanHashWithUndo(sourceDirectories, targetDirectories, writeWithUndo, plan, previousPlanHash) {
   const targets = new Set(targetDirectories);
   for (const directory of sourceDirectories) {
     if (!existsSync(directory)) continue;
@@ -354,7 +442,7 @@ function migrateReceiptsPlanHashWithUndo(sourceDirectories, targetDirectories, w
       } catch {
         continue;
       }
-      if (!isObject(record) || record.plan_revision !== plan.revision || record.plan_hash === plan.hash) continue;
+      if (!isObject(record) || record.plan_revision !== plan.revision || record.plan_hash !== previousPlanHash) continue;
       record.plan_hash = plan.hash;
       const serialized = `${JSON.stringify(record, null, 2)}\n`;
       writeWithUndo(join(directory, fileName), serialized);
@@ -369,6 +457,50 @@ function migrateReceiptsPlanHashWithUndo(sourceDirectories, targetDirectories, w
   }
 }
 
+function migratePlanScopedEvidenceDirectoryWithUndo(source, target, writeWithUndo, undoLog, migrateRecord) {
+  if (!existsSync(source)) return;
+  for (const fileName of readdirSync(source).filter(name => name.endsWith('.json'))) {
+    const filePath = join(source, fileName);
+    let record;
+    try {
+      record = JSON.parse(readFileSync(filePath, 'utf8'));
+    } catch (error) {
+      throw new Error(`Unable to migrate plan-scoped evidence '${filePath}': ${error.message}`);
+    }
+    const migrated = migrateRecord(record);
+    writeWithUndo(filePath, `${JSON.stringify(migrated, null, 2)}\n`);
+  }
+  migratePlanScopedDirectoryWithUndo(source, target, undoLog);
+}
+
+function migrateRepairStateRecord(changeDir, record, previousPlan, nextPlan) {
+  if (!isObject(record) || record.plan_hash !== previousPlan.hash
+    || record.plan_revision !== previousPlan.revision || !isNonEmptyText(record.wave_id)) {
+    throw new Error('Repair state cannot be resynced because its plan or wave identity is invalid');
+  }
+  validateRepairStateEvidence(changeDir, previousPlan, record.wave_id, record);
+  const migrated = structuredClone(record);
+  migrated.plan_hash = nextPlan.hash;
+  for (const failure of migrated.failures) failure.plan_hash = nextPlan.hash;
+  if (isObject(migrated.resolution)) migrated.resolution.plan_hash = nextPlan.hash;
+  return migrated;
+}
+
+function migrateAdjudicationLedgerRecord(changeDir, record, previousPlan, nextPlan) {
+  if (!isObject(record) || record.plan_hash !== previousPlan.hash
+    || record.plan_revision !== previousPlan.revision || !isNonEmptyText(record.wave_id)) {
+    throw new Error('Adjudication ledger cannot be resynced because its plan or wave identity is invalid');
+  }
+  validateAdjudicationLedgerEvidence(changeDir, previousPlan, record.wave_id, record);
+  const migrated = structuredClone(record);
+  migrated.plan_hash = nextPlan.hash;
+  for (const adjudication of migrated.adjudications) {
+    adjudication.failed_receipt.plan_hash = nextPlan.hash;
+    if (isObject(adjudication.review)) adjudication.review.plan_hash = nextPlan.hash;
+  }
+  return migrated;
+}
+
 // Moves one plan-scoped record directory (checkpoints/handoffs/workspace) onto
 // the resynced identity. These records contain no plan_hash fields, so a whole
 // directory move preserves them exactly as recorded. Each completed move is
@@ -377,24 +509,29 @@ function migrateReceiptsPlanHashWithUndo(sourceDirectories, targetDirectories, w
 function migratePlanScopedDirectoryWithUndo(source, target, undoLog) {
   if (!existsSync(source)) return;
   if (existsSync(target)) {
-    const movedEntries = [];
-    for (const entry of readdirSync(source, { withFileTypes: true })) {
-      const destination = join(target, entry.name);
-      rmSync(destination, { recursive: true, force: true });
-      renameSync(join(source, entry.name), destination);
-      movedEntries.push({ from: destination, to: join(source, entry.name) });
+    const entries = readdirSync(source, { withFileTypes: true });
+    const collision = entries.find(entry => existsSync(join(target, entry.name)));
+    if (collision) {
+      throw new Error(`Plan-scoped migration target already contains '${collision.name}'; refusing a destructive collision`);
     }
+    const movedEntries = [];
+    // Register rollback before the first move. If any later rename fails, the
+    // catch-side replay can restore every entry that was already moved.
     undoLog.push({
       path: target,
       previousContent: null,
       restore: () => {
-        // I1：旧身份父目录可能已被 removeDirIfEmpty 清掉，逆序搬回前先 mkdir 兜底。
         mkdirSync(source, { recursive: true });
         for (const moved of [...movedEntries].reverse()) {
-          renameSync(moved.from, moved.to);
+          if (existsSync(moved.from)) renameSync(moved.from, moved.to);
         }
       },
     });
+    for (const entry of entries) {
+      const destination = join(target, entry.name);
+      renameSync(join(source, entry.name), destination);
+      movedEntries.push({ from: destination, to: join(source, entry.name) });
+    }
   } else {
     mkdirSync(dirname(target), { recursive: true });
     renameSync(source, target);
@@ -484,8 +621,19 @@ export function describeWaves(changeDir, plan = readPlan(changeDir)) {
       ...blockedDependencies(changeDir, plan, wave),
       ...(review.blocker ? [review.blocker] : []),
     ];
-    const repair = describeRepairState(changeDir, plan, wave.id, receipt);
-    const retryable = receipt?.status === 'fail' && repair.status !== 'adjudication-required';
+    let repair;
+    try {
+      repair = describeRepairState(changeDir, plan, wave.id, receipt);
+    } catch (error) {
+      blockers.push(`repair state evidence is invalid: ${error.message}`);
+      repair = {
+        status: 'invalid', failure_count: 0, previous_head: null,
+        previous_report: null, failures: [],
+      };
+    }
+    const adjudication = describeAdjudication(changeDir, plan, wave.id, repair, receipt);
+    const retryable = blockers.length === 0 && receipt?.status === 'fail'
+      && (repair.status !== 'adjudication-required' || adjudication?.active === true);
     return {
       id: wave.id,
       strategy: wave.strategy,
@@ -496,19 +644,25 @@ export function describeWaves(changeDir, plan = readPlan(changeDir)) {
       receipt,
       blockers,
       repair,
+      ...(adjudication ? { adjudication } : {}),
     };
   });
 }
 
-function validateRepairContinuity(previousReceipt, previousRepair, nextReceipt) {
+function validateRepairContinuity(previousReceipt, previousRepair, nextReceipt, { allowRepeatedRange = true } = {}) {
   if (previousReceipt?.status !== 'fail') return;
   const previousHead = previousRepair?.previous_head ?? previousReceipt.head;
   if (!previousHead) throw new Error('Repair state is missing the previous review head');
 
+  if (!allowRepeatedRange && nextReceipt.base === nextReceipt.head) {
+    throw new Error('Authorized repair review must include a non-empty Git range; base and head must differ');
+  }
+
   // A failed re-review must examine a repair that starts at the prior review
-  // head. A pass may also certify the exact original range: this preserves the
-  // established fail→pass receipt flow for a corrected review finding.
-  const repeatsPreviousRange = nextReceipt.status === 'pass'
+  // head. Outside adjudication, a pass may also certify the exact original
+  // range to preserve the established fail→pass receipt flow. A human
+  // authorization disables that compatibility exception.
+  const repeatsPreviousRange = allowRepeatedRange && nextReceipt.status === 'pass'
     && nextReceipt.base === previousReceipt.base
     && nextReceipt.head === previousReceipt.head;
   if (nextReceipt.base !== previousHead && !repeatsPreviousRange) {
@@ -525,7 +679,7 @@ function updateRepairState(changeDir, plan, waveId, previousRepair, previousRece
   let state;
 
   if (receipt.status === 'fail') {
-    const failures = [...priorFailures, reviewEvidence(receipt)];
+    const failures = [...priorFailures, reviewEvidence(receipt, waveId)];
     state = {
       plan_hash: plan.hash,
       plan_revision: plan.revision,
@@ -547,7 +701,7 @@ function updateRepairState(changeDir, plan, waveId, previousRepair, previousRece
       previous_head: receipt.head,
       previous_report: previousRepair?.previous_report ?? priorFailures.at(-1)?.report ?? null,
       failures: priorFailures,
-      resolution: reviewEvidence(receipt),
+      resolution: reviewEvidence(receipt, waveId),
       updated_at: now,
     };
   } else {
@@ -560,34 +714,131 @@ function updateRepairState(changeDir, plan, waveId, previousRepair, previousRece
   return state;
 }
 
-function reviewEvidence(receipt) {
+function reviewEvidence(receipt, waveId) {
   return {
+    status: receipt.status,
     base: receipt.base,
     head: receipt.head,
     report: receipt.report,
+    report_sha256: receipt.report_sha256,
+    plan_hash: receipt.plan_hash,
+    plan_revision: receipt.plan_revision,
+    wave_id: waveId,
     recorded_at: receipt.recorded_at,
   };
 }
 
-function readRepairState(changeDir, plan, waveId) {
+function adjudicationReceiptEvidence(receipt, waveId) {
+  return reviewEvidence(receipt, waveId);
+}
+
+function readRepairState(changeDir, plan, waveId, currentReceipt = null) {
   if (!plan) return null;
   const statePath = join(getPlanScopedPaths(changeDir, plan).repairState, `${safeFileName(waveId)}.json`);
   if (!existsSync(statePath)) return null;
+  let state;
   try {
-    const state = JSON.parse(readFileSync(statePath, 'utf8'));
-    if (state?.plan_hash !== plan.hash || state?.plan_revision !== plan.revision || state?.wave_id !== waveId) return null;
-    if (!['repairing', 'resolved', 'adjudication-required'].includes(state.status)) return null;
-    if (!Number.isInteger(state.failure_count) || state.failure_count < 1 || !Array.isArray(state.failures)
-      || state.failures.length !== state.failure_count || !isNonEmptyText(state.previous_head)
-      || !isNonEmptyText(state.previous_report)) return null;
-    return state;
-  } catch {
-    return null;
+    state = JSON.parse(readFileSync(statePath, 'utf8'));
+  } catch (error) {
+    throw new Error(`Unable to read repair state: ${error.message}`);
+  }
+  validateRepairStateEvidence(changeDir, plan, waveId, state, currentReceipt);
+  return state;
+}
+
+function validateRepairStateEvidence(changeDir, plan, waveId, state, currentReceipt = null) {
+  if (state?.plan_hash !== plan.hash || state?.plan_revision !== plan.revision || state?.wave_id !== waveId) {
+    throw new Error('Repair state plan or wave identity does not match the current execution plan');
+  }
+  if (!['repairing', 'resolved', 'adjudication-required'].includes(state.status)) {
+    throw new Error('Repair state status is invalid');
+  }
+  if (!Number.isInteger(state.failure_count) || state.failure_count < 1 || !Array.isArray(state.failures)
+    || state.failures.length !== state.failure_count || !isNonEmptyText(state.previous_head)
+    || !isNonEmptyText(state.previous_report)) {
+    throw new Error('Repair state failure history is malformed');
+  }
+  if (state.status === 'repairing' && state.failure_count >= MAX_REPAIR_FAILURES) {
+    throw new Error('Repair state status does not match its failure count');
+  }
+  if (state.status === 'adjudication-required' && state.failure_count < MAX_REPAIR_FAILURES) {
+    throw new Error('Repair state status does not meet the adjudication threshold');
+  }
+
+  let previousFailure = null;
+  for (const [index, failure] of state.failures.entries()) {
+    const label = `Repair state failure ${index + 1}`;
+    if (failure?.status !== 'fail' || failure?.plan_hash !== plan.hash
+      || failure?.plan_revision !== plan.revision || failure?.wave_id !== waveId) {
+      throw new Error(`${label} plan or wave binding is invalid`);
+    }
+    if (!isNonEmptyText(failure.base) || !isNonEmptyText(failure.head)
+      || !isNonEmptyText(failure.report) || !/^sha256:[0-9a-f]{64}$/i.test(failure.report_sha256 ?? '')
+      || !isNonEmptyText(failure.recorded_at) || Number.isNaN(Date.parse(failure.recorded_at))) {
+      throw new Error(`${label} evidence is malformed`);
+    }
+    const range = validateReviewRange(changeDir, failure.base, failure.head);
+    if (failure.base !== range.base || failure.head !== range.head) {
+      throw new Error(`${label} must use immutable Git commit IDs`);
+    }
+    if (previousFailure && failure.base !== previousFailure.head) {
+      throw new Error(`${label} base must equal the previous failure head so repair ranges are continuous`);
+    }
+    const report = validateReviewReportEvidence(changeDir, failure.report);
+    if (failure.report !== report.path || failure.report_sha256 !== report.sha256) {
+      throw new Error(`${label} report content does not match its recorded hash`);
+    }
+    previousFailure = failure;
+  }
+
+  const finalFailure = state.failures.at(-1);
+  if (state.status === 'resolved') {
+    const resolution = state.resolution;
+    if (resolution?.status !== 'pass' || resolution?.plan_hash !== plan.hash
+      || resolution?.plan_revision !== plan.revision || resolution?.wave_id !== waveId
+      || !isNonEmptyText(resolution.base) || !isNonEmptyText(resolution.head)
+      || !isNonEmptyText(resolution.report) || !/^sha256:[0-9a-f]{64}$/i.test(resolution.report_sha256 ?? '')
+      || !isNonEmptyText(resolution.recorded_at) || Number.isNaN(Date.parse(resolution.recorded_at))) {
+      throw new Error('Repair state resolution evidence is malformed');
+    }
+    const resolutionRange = validateReviewRange(changeDir, resolution.base, resolution.head);
+    if (resolution.base !== resolutionRange.base || resolution.head !== resolutionRange.head) {
+      throw new Error('Repair state resolution must use immutable Git commit IDs');
+    }
+    const resolutionReport = validateReviewReportEvidence(changeDir, resolution.report);
+    if (resolution.report !== resolutionReport.path || resolution.report_sha256 !== resolutionReport.sha256) {
+      throw new Error('Repair state resolution report content does not match its recorded hash');
+    }
+    if (state.previous_head !== resolution.head || state.previous_report !== finalFailure.report) {
+      throw new Error('Resolved repair state does not match its resolution and final failure evidence');
+    }
+  } else if (state.previous_head !== finalFailure.head || state.previous_report !== finalFailure.report) {
+    throw new Error('Repair state previous evidence does not match its final failure');
+  }
+  if (currentReceipt && !sameReviewEvidence(finalFailure, currentReceipt, plan, waveId)) {
+    throw new Error('Repair state final failure does not match the current failed receipt');
   }
 }
 
+function sameReviewEvidence(evidence, receipt, plan, waveId) {
+  return evidence?.status === receipt?.status
+    && evidence?.base === receipt?.base
+    && evidence?.head === receipt?.head
+    && evidence?.report === receipt?.report
+    && evidence?.report_sha256 === receipt?.report_sha256
+    && evidence?.plan_hash === plan.hash
+    && evidence?.plan_revision === plan.revision
+    && evidence?.wave_id === waveId
+    && evidence?.recorded_at === receipt?.recorded_at;
+}
+
 function describeRepairState(changeDir, plan, waveId, receipt) {
-  const state = readRepairState(changeDir, plan, waveId);
+  const state = readRepairState(
+    changeDir,
+    plan,
+    waveId,
+    receipt?.status === 'fail' ? receipt : null,
+  );
   if (state) return state;
   if (receipt?.status === 'fail') {
     // A valid legacy fail receipt predates repair-state. It remains retryable
@@ -601,6 +852,155 @@ function describeRepairState(changeDir, plan, waveId, receipt) {
     status: 'not-needed', failure_count: 0, previous_head: null,
     previous_report: null, failures: [],
   };
+}
+
+function adjudicationPath(changeDir, plan, waveId) {
+  return join(getPlanScopedPaths(changeDir, plan).adjudications, `${safeFileName(waveId)}.json`);
+}
+
+function readAdjudicationLedger(changeDir, plan, waveId) {
+  if (!plan) return null;
+  const filePath = adjudicationPath(changeDir, plan, waveId);
+  if (!existsSync(filePath)) return null;
+  try {
+    const ledger = JSON.parse(readFileSync(filePath, 'utf8'));
+    if (ledger?.plan_hash !== plan.hash || ledger?.plan_revision !== plan.revision
+      || ledger?.wave_id !== waveId || !Array.isArray(ledger.adjudications)) {
+      throw new Error('adjudication ledger identity or entries are invalid');
+    }
+    validateAdjudicationLedgerEvidence(changeDir, plan, waveId, ledger);
+    return ledger;
+  } catch (error) {
+    throw new Error(`Unable to read adjudication evidence: ${error.message}`);
+  }
+}
+
+function validateAdjudicationLedgerEvidence(changeDir, plan, waveId, ledger) {
+  if (!Array.isArray(ledger?.adjudications) || ledger.adjudications.length === 0) {
+    throw new Error('adjudication ledger must contain at least one audit entry');
+  }
+  const repair = readRepairState(changeDir, plan, waveId);
+  if (!repair || !Array.isArray(repair.failures) || repair.failures.length === 0) {
+    throw new Error('adjudication ledger has no repair chain to bind its entries');
+  }
+  const ids = new Set();
+  let previousFailureCount = 0;
+  for (const [index, entry] of ledger.adjudications.entries()) {
+    const label = `Adjudication entry ${index + 1}`;
+    if (!isNonEmptyText(entry?.id) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entry.id)) {
+      throw new Error(`${label} id is invalid`);
+    }
+    if (ids.has(entry.id)) throw new Error(`${label} id is duplicated`);
+    ids.add(entry.id);
+    if (!['authorized', 'consumed'].includes(entry.status) || entry.decision !== 'allow-review'
+      || entry.confirmed !== true || !isNonEmptyText(entry.reason)
+      || entry.reason !== entry.reason.trim() || /[\p{Cc}\p{Zl}\p{Zp}]/u.test(entry.reason)
+      || !isValidTimestamp(entry.authorized_at)
+      || !Number.isInteger(entry.failure_count) || entry.failure_count < MAX_REPAIR_FAILURES
+      || !isNonEmptyText(entry.previous_head) || !isNonEmptyText(entry.previous_report)) {
+      throw new Error(`${label} audit evidence is malformed`);
+    }
+    if (entry.failure_count <= previousFailureCount) {
+      throw new Error(`${label} failure count must advance through the repair chain`);
+    }
+    previousFailureCount = entry.failure_count;
+    validateStoredReviewEvidence(changeDir, plan, waveId, entry.failed_receipt, {
+      expectedStatuses: new Set(['fail']),
+      label: `${label} failed receipt`,
+    });
+    if (entry.previous_head !== entry.failed_receipt.head
+      || entry.previous_report !== entry.failed_receipt.report) {
+      throw new Error(`${label} repair identity does not match its failed receipt`);
+    }
+    const adjudicatedFailure = repair.failures[entry.failure_count - 1];
+    if (!adjudicatedFailure) {
+      throw new Error(`${label} failure count does not identify an existing repair chain failure`);
+    }
+    if (!sameReviewEvidence(entry.failed_receipt, adjudicatedFailure, plan, waveId)) {
+      throw new Error(`${label} failed receipt does not match the identified repair chain failure`);
+    }
+    if (entry.status === 'authorized') {
+      if (entry.consumed_at !== undefined || entry.review !== undefined) {
+        throw new Error(`${label} authorized evidence must not contain consumed review fields`);
+      }
+      if (index !== ledger.adjudications.length - 1) {
+        throw new Error(`${label} authorized evidence must be the latest ledger entry`);
+      }
+      continue;
+    }
+    if (!isValidTimestamp(entry.consumed_at) || Date.parse(entry.consumed_at) < Date.parse(entry.authorized_at)) {
+      throw new Error(`${label} consumption timestamp is invalid`);
+    }
+    validateStoredReviewEvidence(changeDir, plan, waveId, entry.review, {
+      expectedStatuses: REVIEW_STATUSES,
+      label: `${label} consumed review`,
+    });
+    if (entry.review.base !== entry.previous_head || entry.review.base === entry.review.head) {
+      throw new Error(`${label} consumed review must be a non-empty range continuous from the adjudicated head`);
+    }
+    const expectedReview = entry.review.status === 'fail'
+      ? repair.failures[entry.failure_count]
+      : repair.resolution;
+    if (!expectedReview || !sameReviewEvidence(entry.review, expectedReview, plan, waveId)) {
+      throw new Error(`${label} consumed review does not match the next repair chain outcome`);
+    }
+  }
+}
+
+function validateStoredReviewEvidence(changeDir, plan, waveId, evidence, { expectedStatuses, label }) {
+  if (!isObject(evidence) || !expectedStatuses.has(evidence.status)
+    || evidence.plan_hash !== plan.hash || evidence.plan_revision !== plan.revision
+    || evidence.wave_id !== waveId || !isNonEmptyText(evidence.base) || !isNonEmptyText(evidence.head)
+    || !isNonEmptyText(evidence.report) || !/^sha256:[0-9a-f]{64}$/i.test(evidence.report_sha256 ?? '')
+    || !isValidTimestamp(evidence.recorded_at)) {
+    throw new Error(`${label} audit evidence is malformed`);
+  }
+  const range = validateReviewRange(changeDir, evidence.base, evidence.head);
+  if (evidence.base !== range.base || evidence.head !== range.head) {
+    throw new Error(`${label} must use immutable Git commit IDs`);
+  }
+  const report = validateReviewReportEvidence(changeDir, evidence.report);
+  if (evidence.report !== report.path || evidence.report_sha256 !== report.sha256) {
+    throw new Error(`${label} report content does not match its recorded hash`);
+  }
+}
+
+function isValidTimestamp(value) {
+  return isNonEmptyText(value) && !Number.isNaN(Date.parse(value));
+}
+
+function writeAdjudicationLedger(changeDir, plan, waveId, ledger) {
+  const directory = getPlanScopedPaths(changeDir, plan).adjudications;
+  mkdirSync(directory, { recursive: true });
+  atomicWrite(adjudicationPath(changeDir, plan, waveId), `${JSON.stringify(ledger, null, 2)}\n`);
+}
+
+function readActiveAdjudication(changeDir, plan, waveId, repair, receipt) {
+  const latest = readAdjudicationLedger(changeDir, plan, waveId)?.adjudications.at(-1);
+  if (!latest || latest.status !== 'authorized' || latest.decision !== 'allow-review' || latest.confirmed !== true) return null;
+  if (repair?.status !== 'adjudication-required' || receipt?.status !== 'fail') return null;
+  validateRepairStateEvidence(changeDir, plan, waveId, repair, receipt);
+  if (latest.failure_count !== repair.failure_count
+    || latest.previous_head !== repair.previous_head
+    || latest.previous_report !== repair.previous_report
+    || !sameReviewEvidence(latest.failed_receipt, receipt, plan, waveId)) return null;
+  return latest;
+}
+
+function describeAdjudication(changeDir, plan, waveId, repair, receipt) {
+  const latest = readAdjudicationLedger(changeDir, plan, waveId)?.adjudications.at(-1);
+  if (!latest) return null;
+  return { ...latest, active: readActiveAdjudication(changeDir, plan, waveId, repair, receipt)?.id === latest.id };
+}
+
+function consumeAdjudication(changeDir, plan, waveId, authorizationId, receipt) {
+  const ledger = readAdjudicationLedger(changeDir, plan, waveId);
+  const authorization = ledger?.adjudications.find(candidate => candidate.id === authorizationId);
+  if (!authorization || authorization.status !== 'authorized') return;
+  authorization.status = 'consumed';
+  authorization.consumed_at = new Date().toISOString();
+  authorization.review = reviewEvidence(receipt, waveId);
+  writeAdjudicationLedger(changeDir, plan, waveId, ledger);
 }
 
 function validateReviewReportEvidence(changeDir, report) {

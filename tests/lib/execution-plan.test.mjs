@@ -1,11 +1,12 @@
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, cpSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  createGitRangeValidator, createPlan as createRawPlan, describeWaves, readCurrentReview, readPlan,
+  adjudicateWave, createGitRangeValidator, createPlan as createRawPlan, describeWaves, readCurrentReview, readPlan,
   recordReview, resyncPlan, validatePlan, writePlan,
 } from '../../scripts/lib/execution-plan.mjs';
 import { createRecommendationReceipt, recommendExecutionModes, validateRecommendationReceiptStructure } from '../../scripts/lib/execution-recommendation.mjs';
@@ -642,6 +643,345 @@ describe('execution plan data contract', () => {
     assert.deepEqual(dependent.blockers, ['wave-1']);
   });
 
+  it('authorizes exactly one current continuous review without releasing dependents', () => {
+    const plan = createPlan(changeDir, {
+      mode: 'sdd', source: 'default', rationale: 'human adjudication permits one review only',
+      waves: [
+        { id: 'wave-1', strategy: 'serial', tasks: ['1.1'], depends_on: [] },
+        { id: 'wave-2', strategy: 'serial', tasks: ['1.2'], depends_on: ['wave-1'] },
+      ],
+    });
+    writePlan(changeDir, plan);
+
+    let base = gitRefs.base;
+    let head = gitRefs.head;
+    let failedBase;
+    let failedHead;
+    for (let failure = 1; failure <= 3; failure += 1) {
+      failedBase = base;
+      failedHead = head;
+      recordReview(changeDir, 'wave-1', {
+        status: 'fail', base, head, report: writeReviewReport(`authorize-${failure}.md`),
+      });
+      base = head;
+      head = createRepairCommit(`authorize-${failure}`);
+    }
+
+    assert.throws(() => adjudicateWave(changeDir, 'wave-1', {
+      decision: 'allow-review', reason: 'Unconfirmed direct API calls must be rejected.',
+    }), /confirmed human review/i);
+    const authorization = adjudicateWave(changeDir, 'wave-1', {
+      decision: 'allow-review', confirmed: true,
+      reason: 'Human confirmed one focused repair after reviewing all findings.',
+    });
+    assert.equal(authorization.status, 'authorized');
+    assert.equal(authorization.confirmed, true);
+    assert.equal(authorization.failure_count, 3);
+    assert.equal(authorization.previous_head, failedHead);
+    assert.match(authorization.failed_receipt.report_sha256, /^sha256:/);
+
+    let [wave, dependent] = describeWaves(changeDir, plan);
+    assert.equal(wave.adjudication.status, 'authorized');
+    assert.equal(wave.adjudication.active, true);
+    assert.equal(wave.retryable, true);
+    assert.equal(wave.eligible, true);
+    assert.equal(dependent.eligible, false);
+    assert.throws(() => adjudicateWave(changeDir, 'wave-1', {
+      decision: 'allow-review', confirmed: true,
+      reason: 'A replay must not mint another active authorization.',
+    }), /already.*active.*authorization|active authorization/i);
+
+    assert.throws(() => recordReview(changeDir, 'wave-1', {
+      status: 'pass', base: failedHead, head: failedHead,
+      report: writeReviewReport('authorized-zero-range-pass.md'),
+    }), /authorized repair review.*non-empty|base and head must differ/i);
+    [wave, dependent] = describeWaves(changeDir, plan);
+    assert.equal(wave.repair.status, 'adjudication-required');
+    assert.equal(wave.adjudication.active, true);
+    assert.equal(dependent.eligible, false);
+
+    assert.throws(() => recordReview(changeDir, 'wave-1', {
+      status: 'pass', base: failedBase, head: failedHead,
+      report: writeReviewReport('authorized-old-range-pass.md'),
+    }), /base must equal the previous review head/i);
+
+    recordReview(changeDir, 'wave-1', {
+      status: 'fail', base: failedHead, head,
+      report: writeReviewReport('authorized-fail.md'),
+    });
+    [wave, dependent] = describeWaves(changeDir, plan);
+    assert.equal(wave.repair.status, 'adjudication-required');
+    assert.equal(wave.repair.failure_count, 4);
+    assert.equal(wave.adjudication.status, 'consumed');
+    assert.equal(wave.adjudication.active, false);
+    assert.equal(wave.retryable, false);
+    assert.equal(dependent.eligible, false);
+    assert.throws(() => recordReview(changeDir, 'wave-1', {
+      status: 'pass', base: head, head,
+      report: writeReviewReport('unauthorized-pass.md'),
+    }), /requires adjudication/i);
+
+    adjudicateWave(changeDir, 'wave-1', {
+      decision: 'allow-review', confirmed: true,
+      reason: 'Human reviewed the fourth failure and authorizes one final focused review.',
+    });
+    const resolvedHead = createRepairCommit('authorized-pass');
+    recordReview(changeDir, 'wave-1', {
+      status: 'pass', base: head, head: resolvedHead,
+      report: writeReviewReport('authorized-pass.md'),
+    });
+    [wave, dependent] = describeWaves(changeDir, plan);
+    assert.equal(wave.repair.status, 'resolved');
+    assert.equal(wave.adjudication.status, 'consumed');
+    assert.equal(wave.receipt.status, 'pass');
+    assert.equal(dependent.eligible, true);
+  });
+
+  it('rejects adjudication for a non-blocked wave and for a stale plan', () => {
+    const plan = createPlan(changeDir, {
+      mode: 'sdd', source: 'default', rationale: 'adjudication is bound to current blocked evidence',
+      waves: [{ id: 'wave-1', strategy: 'serial', tasks: ['1.1'], depends_on: [] }],
+    });
+    writePlan(changeDir, plan);
+
+    assert.throws(() => adjudicateWave(changeDir, 'wave-1', {
+      decision: 'allow-review', confirmed: true, reason: 'There is no blocked repair to adjudicate.',
+    }), /adjudication-required/i);
+
+    for (let failure = 1, base = gitRefs.base; failure <= 3; failure += 1, base = gitRefs.head) {
+      recordReview(changeDir, 'wave-1', {
+        status: 'fail', base, head: gitRefs.head, report: writeReviewReport(`stale-${failure}.md`),
+      });
+    }
+    writeFileSync(join(changeDir, 'tasks.md'), '# Tasks\n\n- [ ] 1.1 Changed task\n');
+    assert.throws(() => adjudicateWave(changeDir, 'wave-1', {
+      decision: 'allow-review', confirmed: true, reason: 'A stale plan must not accept adjudication.',
+    }), /invalid execution plan|stale/i);
+  });
+
+  it('rejects well-shaped repair history tampering before adjudication', () => {
+    const plan = createPlan(changeDir, {
+      mode: 'sdd', source: 'default', rationale: 'adjudication revalidates the complete failure chain',
+      waves: [{ id: 'wave-1', strategy: 'serial', tasks: ['1.1'], depends_on: [] }],
+    });
+    writePlan(changeDir, plan);
+
+    let base = gitRefs.base;
+    let head = gitRefs.head;
+    for (let failure = 1; failure <= 3; failure += 1) {
+      recordReview(changeDir, 'wave-1', {
+        status: 'fail', base, head, report: writeReviewReport(`tampered-history-${failure}.md`),
+      });
+      base = head;
+      head = createRepairCommit(`tampered-history-${failure}`);
+    }
+
+    const statePath = join(
+      getPlanScopedPaths(changeDir, plan).repairState,
+      `${Buffer.from('wave-1').toString('base64url')}.json`,
+    );
+    const original = JSON.parse(readFileSync(statePath, 'utf8'));
+    assert.match(original.failures[0].report_sha256, /^sha256:[0-9a-f]{64}$/);
+    assert.equal(original.failures[0].plan_hash, plan.hash);
+    assert.equal(original.failures[0].plan_revision, plan.revision);
+    assert.equal(original.failures[0].wave_id, 'wave-1');
+
+    const firstReport = join(changeDir, original.failures[0].report);
+    const firstReportBody = readFileSync(firstReport, 'utf8');
+    writeFileSync(firstReport, `${firstReportBody}tampered\n`);
+    assert.throws(() => adjudicateWave(changeDir, 'wave-1', {
+      decision: 'allow-review', confirmed: true,
+      reason: 'Historical report content must still match its recorded digest.',
+    }), /repair state.*report.*content|report.*hash/i);
+    writeFileSync(firstReport, firstReportBody);
+
+    const discontinuous = structuredClone(original);
+    discontinuous.failures[1].base = gitRefs.base;
+    writeFileSync(statePath, `${JSON.stringify(discontinuous, null, 2)}\n`);
+    assert.throws(() => adjudicateWave(changeDir, 'wave-1', {
+      decision: 'allow-review', confirmed: true,
+      reason: 'Each historical repair range must start at the prior failed head.',
+    }), /repair state.*continuous|failure.*base.*previous.*head/i);
+
+    const mismatchedCurrent = structuredClone(original);
+    const firstFailure = mismatchedCurrent.failures[0];
+    const lastFailure = mismatchedCurrent.failures.at(-1);
+    lastFailure.report = firstFailure.report;
+    lastFailure.report_sha256 = firstFailure.report_sha256;
+    mismatchedCurrent.previous_report = firstFailure.report;
+    writeFileSync(statePath, `${JSON.stringify(mismatchedCurrent, null, 2)}\n`);
+    assert.throws(() => adjudicateWave(changeDir, 'wave-1', {
+      decision: 'allow-review', confirmed: true,
+      reason: 'The final failure must match the authoritative current receipt.',
+    }), /repair state.*current failed receipt|final failure.*current/i);
+  });
+
+  it('rejects a well-shaped forged repair head before the adjudication threshold', () => {
+    const plan = createPlan(changeDir, {
+      mode: 'sdd', source: 'default', rationale: 'every replacement review binds to the current failed receipt',
+      waves: [{ id: 'wave-1', strategy: 'serial', tasks: ['1.1'], depends_on: [] }],
+    });
+    writePlan(changeDir, plan);
+    recordReview(changeDir, 'wave-1', {
+      status: 'fail', base: gitRefs.base, head: gitRefs.head,
+      report: writeReviewReport('pre-threshold-original.md'),
+    });
+
+    const forgedHead = createRepairCommit('pre-threshold-forged-head');
+    const replacementHead = createRepairCommit('pre-threshold-replacement');
+    const statePath = join(
+      getPlanScopedPaths(changeDir, plan).repairState,
+      `${Buffer.from('wave-1').toString('base64url')}.json`,
+    );
+    const forged = JSON.parse(readFileSync(statePath, 'utf8'));
+    forged.previous_head = forgedHead;
+    forged.failures[0].head = forgedHead;
+    writeFileSync(statePath, `${JSON.stringify(forged, null, 2)}\n`);
+
+    assert.throws(() => recordReview(changeDir, 'wave-1', {
+      status: 'fail', base: forgedHead, head: replacementHead,
+      report: writeReviewReport('pre-threshold-replacement.md'),
+    }), /repair state.*current failed receipt|final failure.*current/i);
+
+    const wave = describeWaves(changeDir, plan)[0];
+    assert.equal(wave.retryable, false);
+    assert.equal(wave.eligible, false);
+    assert.match(wave.blockers.join('\n'), /repair state.*current failed receipt|final failure.*current/i);
+  });
+
+  it('does not overwrite malformed adjudication evidence', () => {
+    const plan = createPlan(changeDir, {
+      mode: 'sdd', source: 'default', rationale: 'adjudication evidence is fail closed',
+      waves: [{ id: 'wave-1', strategy: 'serial', tasks: ['1.1'], depends_on: [] }],
+    });
+    writePlan(changeDir, plan);
+    for (let failure = 1, base = gitRefs.base; failure <= 3; failure += 1, base = gitRefs.head) {
+      recordReview(changeDir, 'wave-1', {
+        status: 'fail', base, head: gitRefs.head, report: writeReviewReport(`malformed-${failure}.md`),
+      });
+    }
+    const directory = getPlanScopedPaths(changeDir, plan).adjudications;
+    mkdirSync(directory, { recursive: true });
+    const evidencePath = join(directory, `${Buffer.from('wave-1').toString('base64url')}.json`);
+    writeFileSync(evidencePath, '{invalid json\n');
+
+    assert.throws(() => adjudicateWave(changeDir, 'wave-1', {
+      decision: 'allow-review', confirmed: true, reason: 'Malformed evidence must block instead of being replaced.',
+    }), /adjudication evidence/i);
+    assert.equal(readFileSync(evidencePath, 'utf8'), '{invalid json\n');
+  });
+
+  it('rejects JSON-valid adjudication entries with incomplete audit evidence', () => {
+    const plan = createPlan(changeDir, {
+      mode: 'sdd', source: 'default', rationale: 'adjudication entries must fail closed',
+      waves: [{ id: 'wave-1', strategy: 'serial', tasks: ['1.1'], depends_on: [] }],
+    });
+    writePlan(changeDir, plan);
+    for (let failure = 1, base = gitRefs.base; failure <= 3; failure += 1, base = gitRefs.head) {
+      recordReview(changeDir, 'wave-1', {
+        status: 'fail', base, head: gitRefs.head,
+        report: writeReviewReport(`incomplete-ledger-${failure}.md`),
+      });
+    }
+    adjudicateWave(changeDir, 'wave-1', {
+      decision: 'allow-review', confirmed: true,
+      reason: 'Human reviewed the complete failure chain.',
+    });
+
+    const evidencePath = join(
+      getPlanScopedPaths(changeDir, plan).adjudications,
+      `${Buffer.from('wave-1').toString('base64url')}.json`,
+    );
+    const validLedger = JSON.parse(readFileSync(evidencePath, 'utf8'));
+    const requiredPaths = [
+      ['id'], ['reason'], ['authorized_at'],
+      ['failed_receipt', 'status'], ['failed_receipt', 'plan_hash'],
+      ['failed_receipt', 'plan_revision'], ['failed_receipt', 'wave_id'],
+    ];
+
+    for (const path of requiredPaths) {
+      const tampered = structuredClone(validLedger);
+      const parent = path.slice(0, -1).reduce((value, key) => value[key], tampered.adjudications[0]);
+      delete parent[path.at(-1)];
+      writeFileSync(evidencePath, `${JSON.stringify(tampered, null, 2)}\n`);
+      assert.throws(
+        () => describeWaves(changeDir, plan),
+        /adjudication evidence|adjudication entry|audit evidence/i,
+        `missing ${path.join('.')} must invalidate the authorization`,
+      );
+    }
+  });
+
+  it('rejects incomplete consumption evidence after an authorized review', () => {
+    const plan = createPlan(changeDir, {
+      mode: 'sdd', source: 'default', rationale: 'consumed adjudication evidence must remain auditable',
+      waves: [{ id: 'wave-1', strategy: 'serial', tasks: ['1.1'], depends_on: [] }],
+    });
+    writePlan(changeDir, plan);
+    for (let failure = 1, base = gitRefs.base; failure <= 3; failure += 1, base = gitRefs.head) {
+      recordReview(changeDir, 'wave-1', {
+        status: 'fail', base, head: gitRefs.head,
+        report: writeReviewReport(`consumed-ledger-${failure}.md`),
+      });
+    }
+    adjudicateWave(changeDir, 'wave-1', {
+      decision: 'allow-review', confirmed: true,
+      reason: 'Human reviewed the complete failure chain.',
+    });
+    const repairedHead = createRepairCommit('consumed-ledger-pass');
+    recordReview(changeDir, 'wave-1', {
+      status: 'pass', base: gitRefs.head, head: repairedHead,
+      report: writeReviewReport('consumed-ledger-pass.md'),
+    });
+
+    const evidencePath = join(
+      getPlanScopedPaths(changeDir, plan).adjudications,
+      `${Buffer.from('wave-1').toString('base64url')}.json`,
+    );
+    const validLedger = JSON.parse(readFileSync(evidencePath, 'utf8'));
+    assert.equal(validLedger.adjudications[0].status, 'consumed');
+
+    const missingTimestamp = structuredClone(validLedger);
+    delete missingTimestamp.adjudications[0].consumed_at;
+    writeFileSync(evidencePath, `${JSON.stringify(missingTimestamp, null, 2)}\n`);
+    assert.throws(() => describeWaves(changeDir, plan), /consumption timestamp|audit evidence/i);
+
+    const missingReviewBinding = structuredClone(validLedger);
+    delete missingReviewBinding.adjudications[0].review.wave_id;
+    writeFileSync(evidencePath, `${JSON.stringify(missingReviewBinding, null, 2)}\n`);
+    assert.throws(() => describeWaves(changeDir, plan), /consumed review.*audit evidence/i);
+
+    const wrongFailureCount = structuredClone(validLedger);
+    wrongFailureCount.adjudications[0].failure_count = 999;
+    writeFileSync(evidencePath, `${JSON.stringify(wrongFailureCount, null, 2)}\n`);
+    assert.throws(() => describeWaves(changeDir, plan), /failure count.*repair chain|failed receipt.*repair chain/i);
+
+    const repairStatePath = join(
+      getPlanScopedPaths(changeDir, plan).repairState,
+      `${Buffer.from('wave-1').toString('base64url')}.json`,
+    );
+    const repairState = JSON.parse(readFileSync(repairStatePath, 'utf8'));
+    const swappedFailure = structuredClone(validLedger);
+    swappedFailure.adjudications[0].failed_receipt = structuredClone(repairState.failures[0]);
+    swappedFailure.adjudications[0].previous_head = repairState.failures[0].head;
+    swappedFailure.adjudications[0].previous_report = repairState.failures[0].report;
+    writeFileSync(evidencePath, `${JSON.stringify(swappedFailure, null, 2)}\n`);
+    assert.throws(() => describeWaves(changeDir, plan), /failed receipt.*repair chain/i);
+
+    const alternateReport = writeReviewReport(
+      'consumed-ledger-alternate-valid.md',
+      'A different individually valid report must not replace the consumed review.\n',
+    );
+    const swappedReview = structuredClone(validLedger);
+    swappedReview.adjudications[0].review.report = join(
+      '.superpowers', 'sdd', 'reviews', 'consumed-ledger-alternate-valid.md',
+    );
+    swappedReview.adjudications[0].review.report_sha256 = `sha256:${createHash('sha256')
+      .update(readFileSync(alternateReport)).digest('hex')}`;
+    writeFileSync(evidencePath, `${JSON.stringify(swappedReview, null, 2)}\n`);
+    assert.throws(() => describeWaves(changeDir, plan), /consumed review.*repair chain/i);
+  });
+
   it('cleans only the current plan workspace after a repaired pass while retaining its receipt and repair evidence', () => {
     const plan = createPlan(changeDir, {
       mode: 'sdd', source: 'default', rationale: 'only generated current-plan files are disposable',
@@ -731,7 +1071,72 @@ describe('execution plan resync (plan-resync R1)', () => {
     assert.ok(progress.includes(current.plan_hash), 'audit must mention the new plan hash');
   });
 
-  it('keeps root and plan-scoped receipts and the state summary on the new plan identity', () => {    makeStalePlanWithPassReceipt();
+  it('keeps resolved repair and adjudication evidence current and visible after resync', () => {
+    const plan = createPlan(changeDir, {
+      mode: 'sdd', source: 'default', rationale: 'resolved adjudication history must survive resync',
+      waves: [
+        { id: 'wave-1', strategy: 'serial', tasks: ['1.1'], depends_on: [] },
+        { id: 'wave-2', strategy: 'serial', tasks: ['1.2'], depends_on: ['wave-1'] },
+      ],
+    });
+    writePlan(changeDir, plan);
+
+    let base = gitRefs.base;
+    let head = gitRefs.head;
+    for (let failure = 1; failure <= 3; failure += 1) {
+      recordReview(changeDir, 'wave-1', {
+        status: 'fail', base, head,
+        report: writeReviewReport(`resync-adjudication-fail-${failure}.md`),
+      });
+      if (failure < 3) {
+        base = head;
+        head = createRepairCommit(`resync-adjudication-fail-${failure}`);
+      }
+    }
+    adjudicateWave(changeDir, 'wave-1', {
+      decision: 'allow-review', confirmed: true,
+      reason: 'Human reviewed all three failures before the final repair.',
+    });
+    const resolvedHead = createRepairCommit('resync-adjudication-pass');
+    recordReview(changeDir, 'wave-1', {
+      status: 'pass', base: head, head: resolvedHead,
+      report: writeReviewReport('resync-adjudication-pass.md'),
+    });
+    let [wave, dependent] = describeWaves(changeDir, plan);
+    assert.equal(wave.repair.status, 'resolved');
+    assert.equal(wave.adjudication.status, 'consumed');
+    assert.equal(dependent.eligible, true);
+
+    const previousPaths = getPlanScopedPaths(changeDir, plan);
+    writeFileSync(join(changeDir, 'tasks.md'), '# Tasks\n\n- [ ] 1.1 First task refined\n- [ ] 1.2 Second task\n');
+    resyncPlan(changeDir, { reason: 'non-semantic wording fix after adjudicated repair' });
+
+    const resynced = readPlan(changeDir);
+    const currentPaths = getPlanScopedPaths(changeDir, resynced);
+    [wave, dependent] = describeWaves(changeDir, resynced);
+    assert.equal(wave.repair.status, 'resolved');
+    assert.equal(wave.adjudication.status, 'consumed');
+    assert.equal(wave.receipt.status, 'pass');
+    assert.equal(dependent.eligible, true);
+
+    const repairState = JSON.parse(readFileSync(
+      join(currentPaths.repairState, `${Buffer.from('wave-1').toString('base64url')}.json`),
+      'utf8',
+    ));
+    assert.ok(repairState.failures.every(failure => failure.plan_hash === resynced.hash));
+    assert.equal(repairState.resolution.plan_hash, resynced.hash);
+    const ledger = JSON.parse(readFileSync(
+      join(currentPaths.adjudications, `${Buffer.from('wave-1').toString('base64url')}.json`),
+      'utf8',
+    ));
+    assert.equal(ledger.plan_hash, resynced.hash);
+    assert.equal(ledger.adjudications[0].failed_receipt.plan_hash, resynced.hash);
+    assert.equal(ledger.adjudications[0].review.plan_hash, resynced.hash);
+    assert.equal(existsSync(previousPaths.adjudications), false);
+  });
+
+  it('keeps root and plan-scoped receipts and the state summary on the new plan identity', () => {
+    makeStalePlanWithPassReceipt();
 
     resyncPlan(changeDir, { reason: 'identity consistency check' });
 
@@ -847,8 +1252,6 @@ describe('execution plan resync (plan-resync R1)', () => {
       'fail-receipt rejection must not write any receipt file',
     );
   });
-
-  // —— P0/P3（review-findings-fix R1/R4）测试辅助 ——
 
   // —— P0/P3（review-findings-fix R1/R4）测试辅助 ——
 
@@ -1131,6 +1534,35 @@ describe('execution plan resync (plan-resync R1)', () => {
     resyncPlan(changeDir, { reason: 'retry after entry-move rollback' });
     assert.equal(validatePlan(changeDir, readPlan(changeDir)).valid, true);
     assert.equal(existsSync(join(migratedCheckpoints, '1.1.md')), true, 'the retry must migrate the checkpoint onto the new identity');
+  });
+
+  it('rejects a target collision before moving any plan-scoped directory entry', () => {
+    const plan = createPlan(changeDir, {
+      mode: 'sdd', source: 'default', rationale: 'target collisions must be non-destructive',
+      waves: [{ id: 'wave-1', strategy: 'serial', tasks: ['1.1'], depends_on: [] }],
+    });
+    writePlan(changeDir, plan);
+    saveCheckpoint(changeDir, { taskId: '1.1', next: 'first source checkpoint' });
+    saveCheckpoint(changeDir, { taskId: '1.2', next: 'second source checkpoint' });
+    writeFileSync(join(changeDir, 'tasks.md'), '# Tasks\n\n- [ ] 1.1 First task refined\n- [ ] 1.2 Second task\n');
+
+    const oldPaths = getPlanScopedPaths(changeDir, plan);
+    const target = join(changeDir, '.superpowers', 'sdd', 'plans', resyncPreviewIdentity(changeDir), 'checkpoints');
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, 'sentinel.txt'), 'pre-existing sentinel\n');
+    writeFileSync(join(target, '1.2.md'), 'pre-existing colliding checkpoint\n');
+    const sourceBefore = readAllReceiptContents(oldPaths.checkpoints);
+    const targetBefore = readAllReceiptContents(target);
+
+    assert.throws(
+      () => resyncPlan(changeDir, { reason: 'collision must fail before moving the first entry' }),
+      /target.*already contains|collision/i,
+    );
+    assert.deepEqual(readAllReceiptContents(oldPaths.checkpoints), sourceBefore,
+      'the old identity must retain every source entry byte-for-byte');
+    assert.deepEqual(readAllReceiptContents(target), targetBefore,
+      'the target identity must retain every pre-existing entry byte-for-byte');
+    assert.equal(readPlan(changeDir).hash, plan.hash, 'the plan identity must stay unchanged');
   });
 
   it('refreshes the recommendation overlay artifacts_hash and reseals it during resync (P3)', () => {

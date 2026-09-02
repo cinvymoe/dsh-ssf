@@ -129,6 +129,7 @@ Before dispatching any repair, read 调用 `ssf_execution`（changeDir: "<change
 
 - **Rounds 1–2 — recovery:** dispatch only the focused repair for the current wave. Give the implementer the CLI repair round, previous review report, and the prior review head. Generate a scoped diff from that head, then dispatch the `re-review-prompt.md` reviewer against the prior finding and that scoped diff. Do not redispatch dependent waves.
 - **Third unresolved failure — stop:** the third unresolved receipt yields CLI status `adjudication-required`. Stop automatic dispatch and request a human adjudication rather than attempting a fourth repair.
+- After human review, record the decision with `ssf execution adjudicate <change-dir> --wave <id> --decision allow-review --confirm --reason <text>`（CLI 子命令，原生写工具未覆盖，使用 `ssf_run` 调用）. It authorizes one continuous review only, never a pass; a failed authorized review returns to `adjudication-required`.
 - Every focused re-review still writes its separate persisted report and is recorded only through 调用 `ssf_execution_write`（action: "review", changeDir: "<change-dir>", wave: "<id>", base: "<sha>", head: "<sha>", report: ".superpowers/sdd/reviews/<wave-id>-rereview.md", verdict: "<pass|fail>"）（CLI 等价：`ssf execution review <change-dir> --wave <id> --base <sha> --head <sha> --report .superpowers/sdd/reviews/<wave-id>-rereview.md --verdict <pass|fail> --json`）。 A replacement `pass` receipt is the only evidence that resolves the wave.
 
 ### Per-Task Loop
