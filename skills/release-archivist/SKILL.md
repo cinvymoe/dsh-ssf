@@ -78,14 +78,20 @@ Check for files modified outside scope fence, new dependencies not in design. Un
 - Run 调用 `ssf_audit`（changeDir: "<change-dir>"）（CLI 等价：`ssf audit <change-dir> --json`） — include `decision-point-audit.md` in archive
 
 ### DP-6 (Verification Outcome, Full/legacy Hotfix)
-调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_6_result", value: "<pass|conditional|fail>: <summary>"）（CLI 等价：`ssf state set <change-dir> dp_6_result "<pass|conditional|fail>: <summary>" --json`）和 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_6_timestamp", value: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"）（CLI 等价：`ssf state set <change-dir> dp_6_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ) --json`）。
-If FAIL, do NOT proceed to DP-7. Route back or ask about abandonment.
+当 Verdict 为 FAIL 时，**必须**调用 `ask_user_question` 结构化提问，禁止使用自然语言 "Route back or ask about abandonment" 或隐式处置。示例：
+```
+调用 ask_user_question({questions:[{id:"dp-6-verification", header:"DP-6 验证处置", question:"验证结果：FAIL，证据：<evidence>。请选择处置方式", options:[{label:"返修复 (Recommended)", description:"返回 executing 修复后重验"}, {label:"放弃关闭", description:"放弃归档，标记 abandoned"}], multi_select:false}]})
+```
+只有当 `answers` 选中后，才写入 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_6_result", value: "<pass|conditional|fail>: <summary>"）（CLI 等价：`ssf state set <change-dir> dp_6_result "<pass|conditional|fail>: <summary>" --json`）和 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_6_timestamp", value: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"）（CLI 等价：`ssf state set <change-dir> dp_6_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ) --json`），并根据选择决定是返回 executing 修复（选中“返修复”）还是标记 `abandoned`（选中“放弃关闭”）；If FAIL, do NOT proceed to DP-7 直到用户通过 `ask_user_question` 明确选择。
 
 After recording a PASS outcome, also record it as the verification gate so the `executing → closing` transition is allowed (the guard accepts either `test_result: pass` or a `dp_6_result` starting with `pass`): 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "test_result", value: "pass"）（CLI 等价：`ssf state set <change-dir> test_result pass --json`）。
 
 ### DP-7 (Archive Confirmation, Full/legacy Hotfix)
-调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_7_result", value: "confirmed: <archive summary>"）（CLI 等价：`ssf state set <change-dir> dp_7_result "confirmed: <archive summary>" --json`）和 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_7_timestamp", value: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"）（CLI 等价：`ssf state set <change-dir> dp_7_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ) --json`）。
-Verify DP-0 through DP-6 are recorded before DP-7.
+**必须**通过 `ask_user_question` 结构化确认归档，禁止隐式确认。Verify DP-0 through DP-6 are recorded before DP-7。示例：
+```
+调用 ask_user_question({questions:[{id:"dp-7-archive", header:"DP-7 归档确认", question:"已完成验证与审计，归档摘要：<archive summary>，是否确认归档并合并 delta specs？", options:[{label:"确认归档 (Recommended)", description:"确认关闭并归档"}, {label:"调整范围", description:"需要调整归档范围"}], multi_select:false}]})
+```
+只有当 `answers` 选中“确认归档”后，才写入 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_7_result", value: "confirmed: <archive summary>"）（CLI 等价：`ssf state set <change-dir> dp_7_result "confirmed: <archive summary>" --json`）和 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_7_timestamp", value: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"）（CLI 等价：`ssf state set <change-dir> dp_7_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ) --json`）并执行 transition to closing 和 ssf_finish。若选中“调整范围”，则暂停归档，返回调整范围后再重验。
 
 ## Archive Rule (Full/legacy Hotfix)
 

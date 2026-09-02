@@ -17,13 +17,20 @@ Check workflow mode and receipt first. Tweak → direct edit mode. Quick or a va
 
 Branch/worktree preflight before ANY implementation edit — **workflow-aware**:
 
-**Full / legacy Hotfix — isolation mandatory (do not skip):**
-1. Run the isolation check: 调用 `ssf_isolate`（changeDir: "<change-dir>", mode: "none"）（CLI 等价：`ssf isolate <change-dir>`）。 This enforces git isolation: if you are on `main`/`master` it creates a git worktree (preferred) or a new branch, and exits non-zero if it cannot and you have not approved `--force`.
-2. If `ssf_isolate` exits non-zero: STOP. Do not edit `main`/`master` in place. Ask the user for explicit approval (and re-run with 调用 `ssf_isolate`（changeDir: "<change-dir>", mode: "force"）（CLI 等价：`ssf isolate <change-dir> --force`） only after they approve). A non-zero exit also covers a failed submodule initialization after the isolation context was created — never implement on a half-initialized worktree.
-3. If it succeeds, report the chosen branch/worktree and make all implementation edits there. `ssf_isolate` also recursively initializes submodules in the new isolation context when a `.gitmodules` exists, and appends a cwd-persistence warning (isolation path + mandatory `cd` prefix rule) to `<change-dir>/.superpowers/sdd/progress.md` so later Bash calls do not silently edit the trunk.
+**Full / legacy Hotfix — isolation requires user confirmation (ask via ask_user_question, do not auto-isolate):**
+1. 必须先调用 `ask_user_question` 结构化询问是否隔离，禁止直接调用 ssf_isolate 或自由文本追问。示例：
+   ```
+   调用 ask_user_question({questions:[{id:"worktree-isolate", header:"隔离确认", question:"当前 workflow 为 Full/legacy Hotfix，当前分支：<branch>（main/master 为保护分支）。是否创建隔离 worktree/分支以避免污染主干？隔离后所有编辑在 worktree 内进行，主干通过 ssf_finish 合并。", options:[{label:"创建隔离 worktree (Recommended)", description:"在 changes/worktrees/<name> 创建 worktree，安全隔离"}, {label:"在当前分支直接编辑", description:"不创建隔离，直接在当前分支编辑（风险自负）"}, {label:"取消", description:"暂不执行"}], multi_select:false}]})
+   ```
+   即使当前分支为 main/master，也必须先经此提问，由用户决定，不得自动创建。
+2. 根据 answers 决定：
+   - 若选中“创建隔离 worktree” → 调用 `ssf_isolate`（changeDir:"<change-dir>", mode:"isolate" 或 mode:"none" 均可，推荐 mode:"isolate"）创建隔离；若创建失败（非零或半初始化），STOP 并报告失败原因，不得在半初始化 worktree 上继续实现，需用户重选
+   - 若选中“在当前分支直接编辑” → 调用 `ssf_isolate`（changeDir:"<change-dir>", mode:"force"）显式标记原地编辑，并警告用户主干污染风险，需用户二次确认已体现在 answers 中
+   - 若选中“取消” → STOP，不执行任何隔离或编辑
+3. 若隔离成功，报告 chosen branch/worktree 并使后续编辑在隔离上下文内（绝对路径或 cd <worktree> && 前缀），并记录 worktree 指针；若原地编辑，则报告将直接编辑 <branch>。`ssf_isolate` 也会递归初始化子模块并追加 cwd 警告到 progress.md — 该说明归属隔离成功分支：当隔离创建成功且存在 `.gitmodules` 时，其会在新隔离上下文中递归初始化子模块，并在 `<change-dir>/.superpowers/sdd/progress.md` 追加 cwd 持久化警告（隔离路径 + 强制 `cd` 前缀规则），避免后续 Bash 调用误改主干。
 4. Closure (including 调用 `ssf_finish`（changeDir: "<change-dir>"）（CLI 等价：`ssf finish <change-dir>`） for Full/legacy Hotfix) is owned by release-archivist — route there after review passes.
 
-**Quick / direct Hotfix / Tweak / lightweight — skip isolation, edit directly on the current branch.** Rationale: no recordReview (R4 never fires), no `ssf_finish` merge, no wave receipts — a worktree would be dead weight. For sensitive scenarios requiring manual isolation, run 调用 `ssf_isolate`（changeDir: "<change-dir>", mode: "force"）（CLI 等价：`ssf isolate <change-dir> --force`） explicitly.
+**Quick / direct Hotfix / Tweak / lightweight — skip isolation, edit directly on the current branch.** Rationale: no recordReview (R4 never fires), no `ssf_finish` merge, no wave receipts — a worktree would be dead weight. For sensitive scenarios requiring manual isolation, run 调用 `ssf_isolate`（changeDir: "<change-dir>", mode: "force"）（CLI 等价：`ssf isolate <change-dir> --force`） explicitly. 如用户在 Full/legacy Hotfix 中经上述提问选择了“在当前分支直接编辑”，则等同于此原地路径，后续不再另行隔离。
 
 ## Core Laws
 
@@ -66,11 +73,26 @@ Treat proposal, design, and tasks as reader-facing decision records. Do not add 
 
 For Full or legacy Hotfix, generate proposed waves from the approved contract, then use the recommendation as a decision aid rather than silently defaulting a mode:
 
-调用 `ssf_execution_write`（action: "recommend", changeDir: "<change-dir>", waves: ["<wave-id>:<parallel|serial>:<task,...>[:<depends-on,...>]"]）（CLI 等价：`ssf execution recommend <change-dir> --wave <wave-id>:<parallel|serial>:<task,...>[:<depends-on,...>] --json`） — Show every available mode, the observed facts, and the recommendation to the user. The command writes a receipt tied to the artifacts, contract, and waves. After the user chooses, record that explicit confirmation: 调用 `ssf_execution_write`（action: "plan", changeDir: "<change-dir>", mode: "<selected-mode>", reason: "user-selected execution mode", waves: ["<wave-id>:<parallel|serial>:<task,...>[:<depends-on,...>]"]）（CLI 等价：`ssf execution plan <change-dir> --mode <selected-mode> --confirm --reason "user-selected execution mode" --wave <wave-id>:<parallel|serial>:<task,...>[:<depends-on,...>] --json`）； add `--acknowledge-recommendation` when the selection differs from the recommendation. 然后 调用 `ssf_execution`（changeDir: "<change-dir>"）（CLI 等价：`ssf execution show <change-dir> --json`）。
+调用 `ssf_execution_write`（action: "recommend", changeDir: "<change-dir>", waves: ["<wave-id>:<parallel|serial>:<task,...>[:<depends-on,...>]"]）（CLI 等价：`ssf execution recommend <change-dir> --wave <wave-id>:<parallel|serial>:<task,...>[:<depends-on,...>] --json`）— 生成波次建议并写入与 artifacts、contract、waves 关联的 receipt，产出观测事实（facts）与推荐模式（recommended），但不自动进入 plan。The command writes a receipt tied to the artifacts, contract, and waves and surfaces observed facts and the recommendation for the subsequent structured question。`recommend` 仅作为决策辅助，不自动选择模式。
+
+**DP-4 必须通过 `ask_user_question` 结构化提问完成，禁止自由文本** — 将上一步 `recommend` 产出的 `<waves>`、`<facts>`、`<recommended>` 填入问题，推荐项必须置首并加 ` (Recommended)` 后缀，`multi_select:false`：
+
+```
+调用 ask_user_question({questions:[{id:"dp-4-mode", header:"DP-4 执行模式选择", question:"已生成波次建议：<waves>，观测事实：<facts>，推荐模式：<recommended>。请选择执行模式", options:[{label:"SDD (Recommended)", description:"子代理驱动分批"}, {label:"Inline", description:"单代理线性"}, {label:"Batch Inline", description:"批量线性"}], multi_select:false}]})
+```
+
+若推荐项非 SDD，则将推荐项重排至首位并加 ` (Recommended)`，其余按原序；仅首项带 ` (Recommended)`（如推荐 `Inline` 时 `options` 为 `[{label:"Inline (Recommended)"}, {label:"SDD"}, {label:"Batch Inline"}]`，而非 `SDD` 仍在首位），`description` 按上例保留。禁止以自然语言 `Show every available mode...` 自由文本替代此结构化提问。
+
+只有当 `ask_user_question` 返回 `answers` 且用户已选中某一 `mode` 后，才以用户选择的 `mode` 执行后续 — 按序执行 `ssf_execution_write` recommend → `ssf_execution_write` plan → `ssf_execution` show → transition to executing：
+
+1. 已完成 `ssf_execution_write` `recommend` 作为决策辅助依据（不自动选择）；
+2. 依据 `answers["dp-4-mode"]` 选中的 `mode` 作为 `selected-mode`，调用 `ssf_execution_write`（action: "plan", changeDir: "<change-dir>", mode: "<selected-mode>", reason: "user-selected execution mode", waves: ["<wave-id>:<parallel|serial>:<task,...>[:<depends-on,...>]"]）（CLI 等价：`ssf execution plan <change-dir> --mode <selected-mode> --confirm --reason "user-selected execution mode" --wave <wave-id>:<parallel|serial>:<task,...>[:<depends-on,...>] --json`）；当用户选择非推荐项时追加 `--acknowledge-recommendation` 以记录知情风险决策；
+3. 调用 `ssf_execution`（changeDir: "<change-dir>"）（CLI 等价：`ssf execution show <change-dir> --json`）校验 `current: true`；
+4. 校验通过后再执行 `ssf_state_write` transition to `executing`（若已在该状态则跳过）；
 
 The optional fourth `--wave` segment names prerequisite wave IDs. `execution show --json` reports `current`, plus each wave's `depends_on`, `receipt`, `blockers`, `retryable`, and `eligible` status. A wave with `retryable: true` has a current `fail` receipt and is eligible only for its focused repair and re-review; its dependents remain blocked until its replacement `pass` receipt. Report the saved plan revision, selected mode, ordered waves, dependencies, and whether every `parallel` wave can actually be dispatched concurrently on the current platform. If concurrency is unavailable, state the capability and reason plainly; retain the planned `parallel` strategy and do not silently execute it as a serial or Batch Inline plan.
 
-The recommendation uses task count, configured `execution.inlineThreshold`, and declared wave strategy. It never auto-selects: present every available mode and the recommendation to the user. `--confirm` records any user-selected mode; a choice that differs from the recommendation requires `--acknowledge-recommendation` so the plan captures an informed risk decision.
+The recommendation uses task count, configured `execution.inlineThreshold`, and declared wave strategy. It never auto-selects: present every available mode and the recommendation to the user **via the mandatory `ask_user_question` (DP-4)**. `recommend` 仅作为决策辅助，不自动选择模式。`--confirm` 记录用户显式选择的 `mode`；当选择非推荐项时必须追加 `--acknowledge-recommendation` 以记录知情风险决策。
 
 | Mode | Criteria |
 |------|----------|

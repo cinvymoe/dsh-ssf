@@ -45,9 +45,12 @@ Must make obvious: approved behavior, out-of-scope, constraints, batches, test o
 
 ## Approval Model (DP-3)
 
-After drafting: summarize handoff rules, identify ambiguity, flag unmapped requirements, ask user to approve explicitly. After approval: 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_3_result", value: "approved: <summary>"）（CLI 等价：`ssf state set <change-dir> dp_3_result "approved: <summary>" --json`）和 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_3_timestamp", value: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"）（CLI 等价：`ssf state set <change-dir> dp_3_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ) --json`）。
+After drafting: summarize handoff rules, identify ambiguity, flag unmapped requirements, then 必须调用 `ask_user_question` 结构化提问，禁止自由文本/口头批准。例如：
+```
+调用 ask_user_question({questions:[{id:"dp-3-contract", header:"DP-3 契约批准", question:"契约已生成，移交规则：<handoff rules>，未映射需求：<unmapped>，是否存在歧义？是否批准契约进入执行？", options:[{label:"批准 (Recommended)", description:"契约准确可执行"}, {label:"需修改", description:"契约需要调整"}], multi_select:false}]})
+```
 
-Advance the state after approval: 调用 `ssf_state_write`（action: "transition", changeDir: "<change-dir>", target: "bridging"）（CLI 等价：`ssf state transition <change-dir> bridging --json`）和 调用 `ssf_state_write`（action: "transition", changeDir: "<change-dir>", target: "approved-for-build"）（CLI 等价：`ssf state transition <change-dir> approved-for-build --json`）。
+只有当 answers 选中“批准”后，才执行后续两个 `ssf_state_write`（dp_3_result: approved: <summary> / dp_3_timestamp）和两个 transition（bridging, approved-for-build）：调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_3_result", value: "approved: <summary>"）（CLI 等价：`ssf state set <change-dir> dp_3_result "approved: <summary>" --json`）和 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_3_timestamp", value: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"）（CLI 等价：`ssf state set <change-dir> dp_3_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ) --json`），以及 调用 `ssf_state_write`（action: "transition", changeDir: "<change-dir>", target: "bridging"）（CLI 等价：`ssf state transition <change-dir> bridging --json`）和 调用 `ssf_state_write`（action: "transition", changeDir: "<change-dir>", target: "approved-for-build"）（CLI 等价：`ssf state transition <change-dir> approved-for-build --json`）。
 
 DP-3 is a hard gate — no implementation without this record.
 
@@ -65,6 +68,7 @@ Generate a minimal contract only for a legacy Hotfix: Intent Lock (one sentence)
 - Do not approve the contract on the user's behalf
 - Do not skip the contract because planning docs look complete
 - Flag unmapped requirements; do not silently drop them
+- 禁止口头/自由文本批准，必须经 `ask_user_question` 结构化提问获得批准（DP-3）
 
 ## Post-Generation
 

@@ -25,6 +25,8 @@ Default: ask a single clear question, wait for the answer, digest, then ask the 
 
 When you have identified 3+ independent open decisions whose answers do not depend on each other, switch to **frontier rounds**: map the open decisions as a tree, identify the frontier — every decision whose prerequisites are already settled — and ask the whole frontier in one round. Number each question and give your recommended answer. A question whose answer depends on another still-open question belongs to a later round, never the current one. Recompute the frontier after each round of answers.
 
+所有 single question / frontier rounds 的提问，若属于用户决策，必须通过 `ask_user_question` 结构化提问，禁止自由文本 ask。示例 frontier round 用 `questions` 数组批量提问，每个 question 有 `id`/`header`/`question`/`options`/`multi_select:false`，推荐项置首加 `(Recommended)`。
+
 Never batch questions with hidden dependencies, and never batch while the problem itself is still undefined.
 
 ### 2.5. Fact-Finding: Your Job, Never the User's
@@ -39,7 +41,7 @@ Present 2-3 options when reasonable answers are finite. This reduces cognitive l
 
 ### 4. Propose 2-3 Approaches with Trade-Offs
 
-For each approach: what it is, upside, downside, best-for. Then **recommend one** and explain why. Never present a single path — always name at least one alternative.
+For each approach: what it is, upside, downside, best-for. Then **recommend one** and explain why. Never present a single path — always name at least one alternative. 推荐方案的选择建议经 `ask_user_question` 结构化提问，`id` 如 `dp-1-approach`，`header` 为 "DP-1 方案选择"，`options` 为 方案A(Recommended)/方案B/方案C（`multi_select:false`，推荐项置首加 `(Recommended)`）。建议通过 `ask_user_question`，若用户已在上下文中明确选择则可口头确认并在 DP-1 总结中固化。若已在后续 DP-1 需求确认（dp-1-requirement）的提问中合并问及方案选择，则不重复提问；方案择优属于探索过程咨询，非硬闸门。
 
 ### 5. Validate Before Concluding
 
@@ -55,7 +57,13 @@ For appropriately-scoped changes, proceed to DP-1.
 
 ### 6. DP-1: Requirement Confirmation Gate
 
-After user confirms the summary: 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_1_result", value: "confirmed: <one-line summary>"）（CLI 等价：`ssf state set <change-dir> dp_1_result "confirmed: <one-line summary>" --json`）和 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_1_timestamp", value: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"）（CLI 等价：`ssf state set <change-dir> dp_1_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ) --json`）。
+必须先调用 `ask_user_question` 结构化确认，例如：
+
+```
+调用 ask_user_question({questions:[{id:"dp-1-requirement", header:"DP-1 需求确认", question:"请确认以下范围是否正确：问题：<problem>，范围：<scope>，非目标：<non-goals>，验收标准：<criteria>，是否确认进入规格编写？", options:[{label:"确认 (Recommended)", description:"范围正确进入下一阶段"}, {label:"需调整", description:"需要修改范围或目标"}], multi_select:false}]})
+```
+
+只有当 `answers` 选中"确认"后，才执行后续两个 `ssf_state_write`：调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_1_result", value: "confirmed: <one-line summary>"）（CLI 等价：`ssf state set <change-dir> dp_1_result "confirmed: <one-line summary>" --json`）和 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_1_timestamp", value: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"）（CLI 等价：`ssf state set <change-dir> dp_1_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ) --json`）。
 
 DP-1 confirms scope, non-goals, and success criteria before artifact creation.
 
@@ -68,7 +76,7 @@ Once DP-1 is recorded, hand off to `spec-writer`.
 - **"This is too simple to need exploration"**: Every change goes through this process. A config change, a single-function fix, a label rename — all of them. "Simple" changes are where unexamined assumptions cause the most wasted work. The exploration can be short (a few sentences for truly simple changes), but you MUST go through it and get DP-1 recorded.
 - **Skipping exploration**: "Simple" changes have scope too. Five minutes of exploration prevents two hours of rework.
 - **Proposing solutions before clarifying**: If the user says "add caching," first ask what problem caching solves.
-- **Asking the user for facts**: If a question can be answered by reading the codebase, running a tool, or dispatching a read-only subagent, do it yourself instead of asking the user. Ask the user only for decisions.
+- **Asking the user for facts**: If a question can be answered by reading the codebase, running a tool, or dispatching a read-only subagent, do it yourself instead of asking the user. Ask the user only for decisions. 即使决策类提问也必须走 `ask_user_question` 结构化提问，禁止自由文本 ask。
 - **Batching dependent questions**: Frontier rounds batch only independent questions. A question that depends on an unsettled answer waits for a later round.
 - **Exploring indefinitely**: Stop when change name, problem statement, scope, non-goals, success criteria, and decomposition decision are all clear.
 

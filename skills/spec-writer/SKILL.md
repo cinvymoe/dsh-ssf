@@ -56,7 +56,7 @@ Every task step must contain the actual content an implementer needs. These are 
 
 ## Artifact Generation
 
-When DP-0 has made the scope clear, generate the configured planning pack (proposal, delta specs from `templates/spec.md`, design, and tasks) in order without pausing between individual artifacts. Validate the pack, then request one DP-2 review. Pause earlier only when the missing decision can change user-visible behavior, compatibility, security, delivery scope, or the selected design; or when artifacts state incompatible scope.
+When DP-0 has made the scope clear, generate the configured planning pack (proposal, delta specs from `templates/spec.md`, design, and tasks) in order without pausing between individual artifacts. Validate the pack, then request one DP-2 review — 请求 DP-2 review 必须走 `ask_user_question` 结构化提问，禁止自由文本追问（见 DP-2 节）。 Pause earlier only when the missing decision can change user-visible behavior, compatibility, security, delivery scope, or the selected design; or when artifacts state incompatible scope.
 
 ## Validation Checklist
 
@@ -91,9 +91,13 @@ If you find issues, fix them inline. No need to re-review — just fix and move 
 
 ## DP-2: Artifact Review Gate
 
-Present a concise summary of all 4 artifacts, then ask one DP-2 question for material adjustments. For Full changes, run one independent five-question blind reader check (problem, command boundary, invalidation boundary, continuation boundary, and document flow) before recording approval; repair only answers the reader cannot derive. After approval: 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_2_result", value: "approved: <summary>"）（CLI 等价：`ssf state set <change-dir> dp_2_result "approved: <summary>" --json`）和 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_2_timestamp", value: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"）（CLI 等价：`ssf state set <change-dir> dp_2_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ) --json`）。
+Present a concise summary of all 4 artifacts, then 必须调用 `ask_user_question` 结构化提问以完成 DP-2 批准，禁止自由文本追问。调用示例：
+```
+调用 ask_user_question({questions:[{id:"dp-2-artifacts", header:"DP-2 工件审查", question:"已生成 proposal/specs/design/tasks 四件套，摘要：<summary>。是否批准进入下一阶段？如需修改请选‘需修改’并说明", options:[{label:"批准 (Recommended)", description:"工件完整可进入契约"}, {label:"需修改", description:"需要调整工件内容"}], multi_select:false}]})
+```
+For Full changes, run one independent five-question blind reader check (problem, command boundary, invalidation boundary, continuation boundary, and document flow) before the structured confirmation; repair only answers the reader cannot derive, then 仍需执行上述 `ask_user_question` 结构化确认。仅当 `ask_user_question` 返回的 answers 选中“批准”后，才执行：调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_2_result", value: "approved: <summary>"）（CLI 等价：`ssf state set <change-dir> dp_2_result "approved: <summary>" --json`）和 调用 `ssf_state_write`（action: "set", changeDir: "<change-dir>", field: "dp_2_timestamp", value: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"）（CLI 等价：`ssf state set <change-dir> dp_2_timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ) --json`）。若选中“需修改”，则按反馈修复工件并重新验证后再次发起 `ask_user_question`。
 
-After the artifacts are done and DP-2 is recorded, advance the state: 调用 `ssf_state_write`（action: "transition", changeDir: "<change-dir>", target: "specifying"）（CLI 等价：`ssf state transition <change-dir> specifying --json`）。
+After the artifacts are done and DP-2 is recorded（即已获“批准”并完成上述两次 `ssf_state_write`），advance the state: 调用 `ssf_state_write`（action: "transition", changeDir: "<change-dir>", target: "specifying"）（CLI 等价：`ssf state transition <change-dir> specifying --json`）。
 
 ## Handoff Rule
 

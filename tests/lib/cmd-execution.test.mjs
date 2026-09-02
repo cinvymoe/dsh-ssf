@@ -948,7 +948,7 @@ describe('ssf execution review — cwd 越界 WARN（worktree-lifecycle R5）', 
       env: { ...process.env, GIT_ALLOW_PROTOCOL: 'file' },
     });
     assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
-    const worktree = join(tmpBase, `${basename(main)}-${name}`);
+    const worktree = join(main, 'changes', 'worktrees', name);
     assert.equal(existsSync(worktree), true, `worktree must exist at ${worktree}`);
     // 断言用规范化路径必须在 review 前捕获（防 worktree 被清理后 realpath
     // 抛 ENOENT）。CI Windows 的 TEMP 是 8.3 短名（RUNNER~1），生产代码经
@@ -988,7 +988,7 @@ describe('ssf execution review — cwd 越界 WARN（worktree-lifecycle R5）', 
       env: { ...process.env, GIT_ALLOW_PROTOCOL: 'file' },
     });
     assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
-    const worktree = join(tmpBase, `${basename(main)}-${name}`);
+    const worktree = join(main, 'changes', 'worktrees', name);
     assert.equal(existsSync(worktree), true, `worktree must exist at ${worktree}`);
     commitFileInWorktree(worktree, 'feature.txt', 'branch work\n');
     const head = runGit(main, ['rev-parse', name]);

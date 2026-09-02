@@ -5,6 +5,8 @@ description: Use when encountering any bug, test failure, or unexpected behavior
 
 > **Tool-first rule (`dsh-ssf` plugin):** 所有 ssf_* 操作优先调用 `ssf_*` 原生工具（含写工具）；仅当工具不存在或调用失败时才回退到等价 `ssf` CLI（可经 `ssf_run`）。
 
+> **DP-5 Hard-Gate:** DP-5 调试升级的用户决策必须通过 `ask_user_question` 结构化提问完成，禁止自由文本讨论；仅当 `answers` 选中后方可执行 `ssf_debug escalate`。Never write `dp_5_*` through raw `ssf state set`。
+
 # Bug Investigator
 
 **Core principle:** Find root cause before attempting fixes. Symptom fixes are failure.
@@ -82,11 +84,18 @@ Before this command, every workflow path (including Quick/direct Hotfix/Tweak) m
 
 Use 调用 `ssf_debug`（action: "show_attempts", changeDir: "<change-dir>"）（CLI 等价：`ssf debug attempt show <change-dir> --json`） to present the complete attempt ledger. Wave Review repair failures are separate evidence and never count as debugging attempts.
 
-After at least three distinct evidence-backed attempts, stop and discuss the architectural decision with the user. Only after the user explicitly chooses may DP-5 be recorded:
+After at least three distinct evidence-backed attempts, MUST stop and invoke the architectural decision via structured `ask_user_question` — 禁止自由文本讨论，DP-5 决策仅可通过 `ask_user_question` 完成：
 
-调用 `ssf_debug`（action: "escalate", changeDir: "<change-dir>", decision: "<continue|abandon>", reason: "<user-confirmed decision>"）（CLI 等价：`ssf debug escalate <change-dir> --decision <continue|abandon> --reason "<user-confirmed decision>" --confirm --json`）。
+```
+调用 ask_user_question({questions:[{id:"dp-5-escalate", header:"DP-5 调试升级", question:"已连续3次修复失败，尝试记录：<attempts>，证据：<evidence>。请选择后续策略", options:[{label:"继续 (Recommended)", description:"继续尝试修复，调整方案"}, {label:"放弃", description:"放弃当前变更，标记为 abandoned"}], multi_select:false}]})
+```
 
-Never write `dp_5_*` through raw `ssf state set`; those fields are guarded by the debug ledger. If the user chooses `abandon`, transition to `abandoned` only after the guarded DP-5 receipt is recorded.
+- `<attempts>` 填充 `ssf_debug show_attempts` 的完整台账，`<evidence>` 填充已落盘的失败日志证据；先执行 `show_attempts` 再提问。
+- 只有当 `ask_user_question` 返回的 `answers["dp-5-escalate"]` 明确选中后，才可记录 DP-5：
+
+调用 `ssf_debug`（action: "escalate", changeDir: "<change-dir>", decision: "<continue|abandon>", reason: "<user-confirmed>"）（CLI 等价：`ssf debug escalate <change-dir> --decision <continue|abandon> --reason "<user-confirmed>" --confirm --json`） — 其中 `继续` → `continue`、`放弃` → `abandon`，`--reason` 必须使用用户确认的选项/理由，`--confirm` 必填。
+
+Never write `dp_5_*` through raw `ssf state set`; those fields are guarded by the debug ledger. 禁止 `ssf state set dp_5_*` 直写，DP-5 字段仅由 `ssf_debug` 台账守护写入。If the user chooses `abandon`, transition to `abandoned` only after the guarded DP-5 receipt is recorded.
 
 ## Red Flags — Return to Phase 1
 

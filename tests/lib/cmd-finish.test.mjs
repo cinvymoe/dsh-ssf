@@ -54,7 +54,7 @@ function makeRepo(dir, { pkg = { name: 'main', version: '0.0.0', scripts: { test
 }
 
 // 主仓库 + changes/<name> 目录 + ensure-branch 创建隔离 worktree。
-// 返回 { main, changeDir, worktree }；worktree = <base>/<mainBasename>-<name>。
+// 返回 { main, changeDir, worktree }；worktree = <main>/changes/worktrees/<name>。
 // repoOpts 透传给 makeRepo（如 { pkg: null } 让默认 npm test 必然失败）。
 function createIsolatedWorktree(base, name, repoOpts) {
   const main = join(base, 'main');
@@ -67,7 +67,7 @@ function createIsolatedWorktree(base, name, repoOpts) {
     env: { ...process.env, GIT_ALLOW_PROTOCOL: 'file', ...GIT_IDENTITY_ENV },
   });
   assert.equal(r.status, 0, `ensure-branch failed: ${r.stdout}\n${r.stderr}`);
-  const worktree = join(base, `${basename(main)}-${name}`);
+  const worktree = join(main, 'changes', 'worktrees', name);
   assert.equal(existsSync(worktree), true, `worktree must exist at ${worktree}`);
   return { main, changeDir, worktree };
 }

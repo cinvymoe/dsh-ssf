@@ -80,7 +80,8 @@ if (!isSafePathSegment(name)) {
   console.error('ensure-branch: change name must be a single safe path segment.');
   process.exit(1);
 }
-const worktreePath = join(dirname(repoRoot), `${repoName}-${name}`);
+// worktree 位于仓库内 changes/worktrees/<name>（.gitignore 已忽略）
+const worktreePath = join(repoRoot, 'changes', 'worktrees', name);
 
 function copyActiveChange(worktreeRoot) {
   if (!existsSync(sourceChangeDir)) return;

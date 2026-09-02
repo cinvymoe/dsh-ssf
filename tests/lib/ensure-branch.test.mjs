@@ -175,7 +175,7 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
     git(repoDir, 'checkout', '-q', 'main');
 
     const r = run(`"${changeDir}" planned-change`);
-    const worktree = join(dirname(repoDir), `${basename(repoDir)}-planned-change`);
+    const worktree = join(repoDir, 'changes', 'worktrees', 'planned-change');
 
     try {
       assert.equal(r.ok, true, r.out);
@@ -193,7 +193,7 @@ describe('BUG/#15: ensure-branch enforces isolation', () => {
     git(repoDir, 'checkout', '-q', 'main');
 
     const r = run(`"${changeDir}"`);
-    const worktree = join(dirname(repoDir), `${basename(repoDir)}-default-name`);
+    const worktree = join(repoDir, 'changes', 'worktrees', 'default-name');
 
     try {
       assert.equal(r.ok, true, r.out);
@@ -227,7 +227,7 @@ describe('worktree-lifecycle R1/R2: submodule init + progress cwd warning', () =
       writeFileSync(join(changeDir, 'proposal.md'), 'x');
 
       const r = run(`"${changeDir}" sm-change`);
-      const worktree = join(base, 'main-sm-change');
+      const worktree = join(main, 'changes', 'worktrees', 'sm-change');
 
       assert.equal(r.ok, true, r.out);
       assert.equal(existsSync(join(worktree, 'subA', 'a.txt')), true, 'outer submodule content must be ready');
@@ -268,7 +268,7 @@ describe('worktree-lifecycle R1/R2: submodule init + progress cwd warning', () =
       writeFileSync(join(changeDir, 'proposal.md'), 'x');
 
       const r = run(`"${changeDir}" plain-change`);
-      const worktree = join(base, 'main-plain-change');
+      const worktree = join(main, 'changes', 'worktrees', 'plain-change');
 
       assert.equal(r.ok, true, r.out);
       assert.equal(existsSync(join(worktree, 'README.md')), true);
@@ -293,7 +293,7 @@ describe('worktree-lifecycle R1/R2: submodule init + progress cwd warning', () =
       // ensure-branch 写入 progress 的隔离路径来自 `git rev-parse
       // --show-toplevel`（长路径形式）；CI Windows 的 TEMP 是 8.3 短名，
       // 断言必须用 native realpath 规范化后的形式比较。
-      const worktree = realpathSync.native(join(base, 'main-pg-change'));
+      const worktree = realpathSync.native(join(main, 'changes', 'worktrees', 'pg-change'));
 
       assert.equal(r.ok, true, r.out);
       const progress = readFileSync(join(changeDir, '.superpowers', 'sdd', 'progress.md'), 'utf8');
@@ -317,7 +317,7 @@ describe('worktree-lifecycle R1/R2: submodule init + progress cwd warning', () =
       writeFileSync(join(changeDir, 'proposal.md'), 'x');
       // Occupy the worktree path so `git worktree add` fails and the fallback
       // `git switch -c` path runs instead.
-      const blockedPath = join(base, 'main-fb-change');
+      const blockedPath = join(main, 'changes', 'worktrees', 'fb-change');
       mkdirSync(blockedPath, { recursive: true });
       writeFileSync(join(blockedPath, 'blocker.txt'), 'x');
 

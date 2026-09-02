@@ -77,6 +77,11 @@ Write tools — by domain (native ssf_* write tools via CLI runner):
 - 生命周期: \`ssf_isolate\` — Isolate a change into a git worktree (--force/--isolate); \`ssf_finish\` — Finish a change (merge, verify, clean worktree); \`ssf_inject\` — Generate phase-guard injection artifacts; \`ssf_sync\` — Publish delta as canonical baseline specs.
 - runtime: \`ssf_audit\` — Generate a decision-point audit report; \`ssf_runtime\` — Execute runtime operations (asset_read/config_get/resolve_model/check_update/infer).
 
+Decision gates (DP-0~DP-7) — MUST use ask_user_question:
+- 所有用户决策（DP-0 设计前确认、DP-1 需求确认、DP-2 工件审查、DP-3 契约批准、DP-4 执行模式、DP-5 调试升级、DP-6 验证处置、DP-7 归档确认）必须通过 ask_user_question 结构化提问完成，禁止自由文本 ask。
+- 每个 question 需含 id（如 dp-0-workflow/dp-1-requirement/dp-2-artifacts/dp-3-contract/dp-4-mode/dp-5-escalate/dp-6-verification/dp-7-archive）、header（DP-N xxx）、question、options（推荐项置首加 (Recommended)）、multi_select:false。
+- 仅当 answers 的 selected 包含确认/批准类选项后，才执行对应的 ssf_state_write / ssf_execution_write / ssf_debug 持久化；guard 校验 dp_*_result 非空。
+
 Keep artifacts under \`changes/<changeDir>/\` and drive every transition through the guarded tool sequence above.
 
 Skills: the spec-superflow skills are registered in the skill catalog; \`workflow-start\` is the entry router — load it with the \`skill\` tool when entering an ssf context, and it routes each state to its phase skill.
