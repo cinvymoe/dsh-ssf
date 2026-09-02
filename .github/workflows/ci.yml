@@ -149,7 +149,7 @@ jobs:
           EXPECTED_VERSION: ${{ github.ref_name }}
         run: |
           node scripts/verify-marketplace-release.mjs \
-            --manifest-url https://raw.githubusercontent.com/hashgraph-online/awesome-codex-plugins/main/plugins/MageByte-Zero/spec-superflow/.codex-plugin/plugin.json \
+            --manifest-url https://raw.githubusercontent.com/hashgraph-online/awesome-codex-plugins/main/plugins/cinvymoe/dsh-ssf/.codex-plugin/plugin.json \
             --expected-version "${EXPECTED_VERSION#v}"
       - name: Token efficiency lint (warning only)
         run: node scripts/lint/lint-skills.mjs --include token

@@ -11,7 +11,7 @@
 Clone the repository and point OpenCode to the plugin entry:
 
 ```bash
-git clone https://github.com/MageByte-Zero/spec-superflow.git ~/spec-superflow
+git clone https://github.com/cinvymoe/dsh-ssf.git ~/spec-superflow
 ```
 
 Then in your OpenCode project, reference this plugin file by absolute path in `.opencode/config.json` (or via the UI):
@@ -27,7 +27,7 @@ Do not copy only `spec-superflow.js` into another project; the plugin reads `../
 OpenCode discovers agent skills from project skill directories. For a specific project:
 
 ```bash
-git clone https://github.com/MageByte-Zero/spec-superflow.git
+git clone https://github.com/cinvymoe/dsh-ssf.git
 mkdir -p your-project/.agents
 ln -s /absolute/path/to/spec-superflow/skills your-project/.agents/skills
 ```

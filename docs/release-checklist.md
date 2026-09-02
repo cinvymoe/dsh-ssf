@@ -111,7 +111,7 @@ For each example in `docs/examples/`:
 
   ```bash
   node scripts/verify-marketplace-release.mjs \
-    --manifest-url https://raw.githubusercontent.com/hashgraph-online/awesome-codex-plugins/main/plugins/MageByte-Zero/spec-superflow/.codex-plugin/plugin.json \
+    --manifest-url https://raw.githubusercontent.com/hashgraph-online/awesome-codex-plugins/main/plugins/cinvymoe/dsh-ssf/.codex-plugin/plugin.json \
     --expected-version <semver>
   ```
 
@@ -120,7 +120,7 @@ For each example in `docs/examples/`:
 - Before creating the marketplace sync branch, fast-forward the personal fork to the upstream default branch. After opening the PR, verify its diff is limited to the intended catalog entry (normally `README.md`); do not carry generated marketplace files or unrelated fork history into the PR.
 
   ```bash
-  gh repo sync MageByte-Zero/awesome-codex-plugins \
+  gh repo sync cinvymoe/awesome-codex-plugins \
     --source hashgraph-online/awesome-codex-plugins
   gh pr diff <pr-number> --repo hashgraph-online/awesome-codex-plugins --name-only
   ```

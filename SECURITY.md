@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in spec-superflow, please report it via GitHub's [private vulnerability reporting](https://github.com/MageByte-Zero/spec-superflow/security/advisories/new) or email **magebyte@163.com**.
+If you discover a security vulnerability in dsh-ssf, please report it via GitHub's [private vulnerability reporting](https://github.com/cinvymoe/dsh-ssf/security/advisories/new) or contact **[@cinvymoe](https://github.com/cinvymoe)**.
 
 **Do not open a public issue** for security vulnerabilities.
 
@@ -21,7 +21,7 @@ If you discover a security vulnerability in spec-superflow, please report it via
 
 ## Scope
 
-spec-superflow is a plugin that runs locally. Security considerations include:
+dsh-ssf is a plugin that runs locally. Security considerations include:
 
 - **Session-start hooks**: Hook scripts execute with the user's shell privileges. Review hook changes carefully.
 - **Skill instructions**: Skills contain AI agent instructions. Maliciously crafted skills could instruct the agent to execute harmful commands.

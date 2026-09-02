@@ -1,4 +1,4 @@
-<h1 align="center">spec-superflow</h1>
+<h1 align="center">dsh-ssf</h1>
 
 <p align="center">
   <strong>An AI coding workflow that uses lightweight or full controls based on change risk</strong>
@@ -6,8 +6,7 @@
 
 <p align="center">
   <a href="../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License"></a>
-  <a href="https://github.com/MageByte-Zero/spec-superflow/stargazers"><img src="https://img.shields.io/github/stars/MageByte-Zero/spec-superflow" alt="GitHub Stars"></a>
-  <a href="https://www.npmjs.com/package/spec-superflow"><img src="https://img.shields.io/npm/v/spec-superflow" alt="npm version"></a>
+  <a href="https://github.com/cinvymoe/dsh-ssf/stargazers"><img src="https://img.shields.io/github/stars/cinvymoe/dsh-ssf" alt="GitHub Stars"></a>
 </p>
 
 <p align="center">
@@ -44,14 +43,14 @@ The agent inspects your current artifacts, performs **content-level detection** 
 Claude Code's primary installation path is the plugin marketplace:
 
 ```bash
-/plugin marketplace add MageByte-Zero/spec-superflow
+/plugin marketplace add cinvymoe/dsh-ssf
 /plugin install spec-superflow@spec-superflow
 /plugin update spec-superflow@spec-superflow   # upgrade
 ```
 
 ### DeepSeek Harness (dsh-ssf plugin)
 
-spec-superflow plugs into DSH (DeepSeek Harness) web profiles as the `dsh-ssf`
+This project plugs into DSH (DeepSeek Harness) web profiles as the `dsh-ssf`
 plugin: the host half registers `ssf_*` native tools and a change-status
 service, the browser half adds a read-only **Spec 工作流** settings tab.
 Install/verify/uninstall: `packages/dsh-ssf/README.md`. The workflow skills now
@@ -63,7 +62,7 @@ prefer the native `ssf_*` tools and fall back to the `ssf` CLI.
 npx spec-superflow@latest install-cursor
 
 # Or run the installer directly:
-curl -fsSL https://raw.githubusercontent.com/MageByte-Zero/spec-superflow/main/scripts/install-cursor.mjs | node -
+curl -fsSL https://raw.githubusercontent.com/cinvymoe/dsh-ssf/main/scripts/install-cursor.mjs | node -
 ```
 
 Cursor discovers `.cursor/skills/`, `.agents/skills/`, `~/.cursor/skills/`, and compatible Claude/Codex skill directories. You can also import a GitHub repo from Customize → Rules → Remote Rule (Github).
@@ -78,7 +77,7 @@ codex
 
 # Or add the community marketplace and install:
 codex plugin marketplace add hashgraph-online/awesome-codex-plugins
-codex plugin add spec-superflow@spec-superflow
+codex plugin add spec-superflow@awesome-codex-plugins
 ```
 
 In the Codex app, open **Plugins** and install or enable `spec-superflow`. If installed from the CLI, restart the app and enable it in the Plugins panel.
@@ -86,14 +85,14 @@ In the Codex app, open **Plugins** and install or enable `spec-superflow`. If in
 ### GitHub Copilot CLI
 
 ```bash
-copilot plugin marketplace add MageByte-Zero/spec-superflow
+copilot plugin marketplace add cinvymoe/dsh-ssf
 copilot plugin install spec-superflow@spec-superflow
 ```
 
 ### Gemini CLI
 
 ```bash
-gemini extensions install https://github.com/MageByte-Zero/spec-superflow
+gemini extensions install https://github.com/cinvymoe/dsh-ssf
 gemini extensions update spec-superflow   # upgrade
 ```
 
@@ -116,7 +115,7 @@ gemini extensions update spec-superflow   # upgrade
 | **Qoder** | `npx spec-superflow@latest install-qoder` | Installer provided |
 | **ZCODE** | `ssf install-zcode` | Installer provided |
 
-> spec-superflow supports 19 platforms. See [INSTALL.md](../INSTALL.md) and the [platform matrix](platform-matrix.md) for the full matrix.
+> dsh-ssf supports 19 platforms. See [INSTALL.md](../INSTALL.md) and the [platform matrix](platform-matrix.md) for the full matrix.
 
 ### CLI Toolchain
 
@@ -211,7 +210,7 @@ AI coding sessions commonly fail in two ways:
 
 - **The plan is solid, but execution drifts.** The proposal, specs, and design are written, but nobody enforces testing, nobody gates reviews, and by merge time the behavior doesn't match.
 
-spec-superflow handles these cases differently: it first assesses change risk; small changes stay within a clear boundary and verification step, while complex changes use intent, specs, an execution contract, implementation, and review. This keeps routine work short without skipping the checks that matter for risky work.
+dsh-ssf handles these cases differently: it first assesses change risk; small changes stay within a clear boundary and verification step, while complex changes use intent, specs, an execution contract, implementation, and review. This keeps routine work short without skipping the checks that matter for risky work.
 
 | Principle | Meaning |
 |---|---|
@@ -377,7 +376,7 @@ This command only resolves local configuration, does not call platform APIs, and
 <details>
 <summary><strong>How is this different from OpenSpec or Superpowers?</strong></summary>
 
-spec-superflow is a source-level fusion, not side-by-side installation. It absorbs OpenSpec's Schema/validation/parsing engine and Superpowers' TDD/SDD/debugging/review discipline, while adding a unique contract-builder bridge layer and 8-state routing. Self-contained — no upstream runtimes needed.
+dsh-ssf is a source-level fusion, not side-by-side installation. It absorbs OpenSpec's Schema/validation/parsing engine and Superpowers' TDD/SDD/debugging/review discipline, while adding a unique contract-builder bridge layer and 8-state routing. Self-contained — no upstream runtimes needed.
 
 </details>
 

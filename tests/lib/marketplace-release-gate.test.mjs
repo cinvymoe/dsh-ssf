@@ -20,6 +20,6 @@ describe('marketplace release gate', () => {
     assert.ok(gate < npmPublish, 'marketplace verification must run before npm publish');
     assert.match(workflow, /EXPECTED_VERSION: \$\{\{ github\.ref_name \}\}/);
     assert.match(workflow, /verify-marketplace-release\.mjs[\s\S]*--expected-version "\$\{EXPECTED_VERSION#v\}"/);
-    assert.match(workflow, /hashgraph-online\/awesome-codex-plugins\/main\/plugins\/MageByte-Zero\/spec-superflow\/\.codex-plugin\/plugin\.json/);
+    assert.match(workflow, /hashgraph-online\/awesome-codex-plugins\/main\/plugins\/cinvymoe\/dsh-ssf\/\.codex-plugin\/plugin\.json/);
   });
 });

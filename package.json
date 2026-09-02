@@ -33,11 +33,11 @@
     "opencode",
     "workbuddy"
   ],
-  "author": "MageByte",
+  "author": "Cinvy",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MageByte-Zero/spec-superflow"
+    "url": "https://github.com/cinvymoe/dsh-ssf"
   },
   "engines": {
     "node": ">=20"

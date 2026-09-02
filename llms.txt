@@ -1,7 +1,7 @@
-# spec-superflow
+# dsh-ssf
 
 ## Overview
-spec-superflow is a self-contained workflow integration plugin for Claude Code, Cursor, OpenAI Codex CLI/App, GitHub Copilot CLI, Gemini CLI, OpenCode, WorkBuddy, and Trae. It merges spec-driven planning artifacts (proposal, specs, design, tasks) with disciplined execution guardrails (TDD, review gates, controlled handoff) into one unified workflow.
+dsh-ssf is a self-contained workflow integration plugin for Claude Code, Cursor, OpenAI Codex CLI/App, GitHub Copilot CLI, Gemini CLI, OpenCode, WorkBuddy, and Trae. It merges spec-driven planning artifacts (proposal, specs, design, tasks) with disciplined execution guardrails (TDD, review gates, controlled handoff) into one unified workflow.
 
 Current version: v1.2.0.
 
@@ -40,7 +40,7 @@ Current version: v1.2.0.
 ## Installation
 See INSTALL.md for platform-specific instructions. Quick install for Claude Code:
 ```
-/plugin marketplace add MageByte-Zero/spec-superflow
+/plugin marketplace add cinvymoe/dsh-ssf
 /plugin install spec-superflow@spec-superflow
 ```
 

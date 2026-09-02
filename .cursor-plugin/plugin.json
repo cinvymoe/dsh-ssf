@@ -4,11 +4,11 @@
   "description": "Spec-first workflow: integrates OpenSpec planning engine + Superpowers execution discipline. 9 collaborative skills with embedded TDD, SDD, code review, debugging, and delta spec sync.",
   "version": "1.2.0",
   "author": {
-    "name": "MageByte",
-    "url": "https://github.com/MageByte-Zero"
+    "name": "Cinvy",
+    "url": "https://github.com/cinvymoe"
   },
-  "homepage": "https://github.com/MageByte-Zero/spec-superflow",
-  "repository": "https://github.com/MageByte-Zero/spec-superflow",
+  "homepage": "https://github.com/cinvymoe/dsh-ssf",
+  "repository": "https://github.com/cinvymoe/dsh-ssf",
   "license": "MIT",
   "logo": "assets/icon.svg",
   "keywords": [

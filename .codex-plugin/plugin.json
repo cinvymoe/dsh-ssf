@@ -3,11 +3,11 @@
   "version": "1.2.0",
   "description": "Spec-first workflow that bridges OpenSpec-style planning and Superpowers-style execution discipline.",
   "author": {
-    "name": "MageByte",
-    "url": "https://github.com/MageByte-Zero"
+    "name": "Cinvy",
+    "url": "https://github.com/cinvymoe"
   },
-  "homepage": "https://github.com/MageByte-Zero/spec-superflow",
-  "repository": "https://github.com/MageByte-Zero/spec-superflow",
+  "homepage": "https://github.com/cinvymoe/dsh-ssf",
+  "repository": "https://github.com/cinvymoe/dsh-ssf",
   "license": "MIT",
   "keywords": [
     "workflow",
@@ -27,14 +27,14 @@
     "displayName": "spec-superflow",
     "shortDescription": "Spec-first workflow with guarded execution.",
     "longDescription": "A self-contained Codex workflow plugin with nine skills for intent exploration, planning artifacts, execution contracts, TDD execution, review gates, systematic debugging, closure, and delta spec sync.",
-    "developerName": "MageByte",
+    "developerName": "Cinvy",
     "category": "Developer Tools",
     "composerIcon": "./assets/icon.svg",
     "capabilities": [
       "Write",
       "Review"
     ],
-    "websiteURL": "https://github.com/MageByte-Zero/spec-superflow",
+    "websiteURL": "https://github.com/cinvymoe/dsh-ssf",
     "defaultPrompt": [
       "Use workflow-start to start a new change.",
       "Review the current spec-superflow stage.",

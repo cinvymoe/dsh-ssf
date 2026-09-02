@@ -1,4 +1,4 @@
-<h1 align="center">spec-superflow</h1>
+<h1 align="center">dsh-ssf</h1>
 
 <p align="center">
   <strong>按改动风险选择轻量或完整路径的 AI 编程工作流插件</strong>
@@ -6,8 +6,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License"></a>
-  <a href="https://github.com/MageByte-Zero/spec-superflow/stargazers"><img src="https://img.shields.io/github/stars/MageByte-Zero/spec-superflow" alt="GitHub Stars"></a>
-  <a href="https://www.npmjs.com/package/spec-superflow"><img src="https://img.shields.io/npm/v/spec-superflow" alt="npm version"></a>
+  <a href="https://github.com/cinvymoe/dsh-ssf/stargazers"><img src="https://img.shields.io/github/stars/cinvymoe/dsh-ssf" alt="GitHub Stars"></a>
 </p>
 
 <p align="center">
@@ -44,7 +43,7 @@ Agent 会自动检查当前工件目录，**内容级判断**（不看文件时�
 Claude Code 的主流方式是插件 marketplace：
 
 ```bash
-/plugin marketplace add MageByte-Zero/spec-superflow
+/plugin marketplace add cinvymoe/dsh-ssf
 /plugin install spec-superflow@spec-superflow
 /plugin update spec-superflow@spec-superflow
 ```
@@ -53,7 +52,7 @@ Marketplace 安装自动加载 hooks，每次新会话自动注入上下文。
 
 ### DeepSeek Harness（dsh-ssf 插件）
 
-spec-superflow 以 `dsh-ssf` 插件形式接入 DSH（DeepSeek Harness）web profile：host 半注册
+本项目以 `dsh-ssf` 插件形式接入 DSH（DeepSeek Harness）web profile：host 半注册
 `ssf_*` 原生工具与变更状态服务，client 半提供设置页"Spec 工作流"tab。安装与卸载见
 `packages/dsh-ssf/README.md`；工作流技能已改为"优先调用 `ssf_*` 原生工具、CLI 回退"。
 
@@ -64,7 +63,7 @@ spec-superflow 以 `dsh-ssf` 插件形式接入 DSH（DeepSeek Harness）web pro
 npx spec-superflow@latest install-cursor
 
 # 方式二：直接运行脚本
-curl -fsSL https://raw.githubusercontent.com/MageByte-Zero/spec-superflow/main/scripts/install-cursor.mjs | node -
+curl -fsSL https://raw.githubusercontent.com/cinvymoe/dsh-ssf/main/scripts/install-cursor.mjs | node -
 ```
 
 > Cursor 原生发现 `.cursor/skills/`、`.agents/skills/`、`~/.cursor/skills/` 等目录，也可以在 Customize → Rules → Remote Rule (Github) 导入。脚本会自动部署 skills、scripts、docs 等运行时依赖。
@@ -83,7 +82,7 @@ codex plugin marketplace add hashgraph-online/awesome-codex-plugins
 codex plugin add spec-superflow@awesome-codex-plugins
 
 # 直接从指定 release tag 安装（不等待社区镜像同步）
-codex plugin marketplace add MageByte-Zero/spec-superflow --ref v1.0.0
+codex plugin marketplace add cinvymoe/dsh-ssf --ref v1.0.0
 codex plugin add spec-superflow@spec-superflow
 
 # 升级并验证社区 marketplace 安装
@@ -97,14 +96,14 @@ Codex App 打开 **Plugins** 面板，安装或启用 `spec-superflow`。通过 
 ### GitHub Copilot CLI
 
 ```bash
-copilot plugin marketplace add MageByte-Zero/spec-superflow
+copilot plugin marketplace add cinvymoe/dsh-ssf
 copilot plugin install spec-superflow@spec-superflow
 ```
 
 ### Gemini CLI
 
 ```bash
-gemini extensions install https://github.com/MageByte-Zero/spec-superflow
+gemini extensions install https://github.com/cinvymoe/dsh-ssf
 gemini extensions update spec-superflow   # 升级
 ```
 
@@ -282,7 +281,7 @@ overlay，不会增加第九个状态；其 CLI 与 CodeBuddy/WorkBuddy Markdown
 
 - **规划文档写得明明白白，但执行阶段还是会跑偏。** proposal 写了、design 画了，但实现过程中没人盯着测试、没人卡 review，等到合并才发现行为不对。
 
-spec-superflow 把这两类问题分开处理：先判断改动风险；小改动直接在明确边界内完成并验证，复杂改动再经过需求、规格、执行契约、实现和审查。这样既不让简单问题变成流程项目，也不让高风险改动跳过必要检查。
+dsh-ssf 把这两类问题分开处理：先判断改动风险；小改动直接在明确边界内完成并验证，复杂改动再经过需求、规格、执行契约、实现和审查。这样既不让简单问题变成流程项目，也不让高风险改动跳过必要检查。
 
 | 设计原则 | 说明 |
 |---|---|
@@ -395,7 +394,7 @@ ssf config --resolve-model mechanical
 ## FAQ
 
 <details>
-<summary><strong>spec-superflow 和 OpenSpec / Superpowers 什么关系？</strong></summary>
+<summary><strong>dsh-ssf 和 OpenSpec / Superpowers 什么关系？</strong></summary>
 
 源码级融合，不是简单并列。吸收了两者的引擎（Schema/验证/解析 + TDD/SDD/调试/审查），独创了 contract-builder 桥接层和 8 状态路由。自包含，不需要安装上游运行时。
 
@@ -404,7 +403,7 @@ ssf config --resolve-model mechanical
 <details>
 <summary><strong>能和我已有的 OpenSpec 或 Superpowers 共存吗？</strong></summary>
 
-建议不要在同一会话混用。已有 OpenSpec 工件目录的项目可以直接用 spec-superflow 接管 —— `contract-builder` 能读取现有文件生成 execution contract。
+建议不要在同一会话混用。已有 OpenSpec 工件目录的项目可以直接用 dsh-ssf 接管 —— `contract-builder` 能读取现有文件生成 execution contract。
 
 </details>
 
