@@ -1,0 +1,17 @@
+{
+  "name": "spec-superflow-marketplace",
+  "owner": {
+    "name": "Cinvy"
+  },
+  "metadata": {
+    "description": "Spec-first workflow plugin marketplace for Cursor",
+    "version": "1.2.0"
+  },
+  "plugins": [
+    {
+      "name": "spec-superflow",
+      "source": ".",
+      "description": "Spec-first workflow: integrates OpenSpec planning engine + Superpowers execution discipline with 9 collaborative skills."
+    }
+  ]
+}

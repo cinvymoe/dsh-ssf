@@ -1,0 +1,192 @@
+#!/usr/bin/env node
+// scripts/ensure-branch.mjs — enforce git isolation before editing main/master
+// Used by build-executor as a mandatory preflight. Exits non-zero when it
+// cannot create an isolated context and no --force approval was given, so the
+// agent MUST stop and ask the user instead of silently editing main/master.
+//
+// Usage: node ensure-branch.mjs <change-dir> [change-name] [--force]
+//
+// Security: every git invocation uses execFileSync with a LITERAL command
+// ('git') and a LITERAL argument array (no shell, no variable args array) —
+// the same form proven safe by install-cursor.mjs / install.mjs. There is no
+// string-form shell command, no variable command, and no dynamic args array.
+import { execFileSync } from 'node:child_process';
+import { appendFileSync, cpSync, existsSync, mkdirSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+
+const changeDir = process.argv[2];
+const changeName = process.argv[3];
+const force = process.argv.includes('--force');
+
+if (!changeDir) {
+  console.error('Usage: node ensure-branch.mjs <change-dir> [change-name] [--force]');
+  process.exit(2);
+}
+
+const PROTECTED = ['main', 'master'];
+const GIT_OPTS = { encoding: 'utf-8', cwd: changeDir, stdio: ['ignore', 'pipe', 'pipe'] };
+
+function isSafePathSegment(value) {
+  return typeof value === 'string'
+    && value.length > 0
+    && value !== '.'
+    && value !== '..'
+    && !/[\\/\u0000-\u001f]/.test(value);
+}
+
+// Determine current branch (literal arg array).
+let branch = '';
+try {
+  branch = (execFileSync('git', ['branch', '--show-current'], GIT_OPTS) || '').trim();
+} catch {
+  console.error('ensure-branch: could not determine current git branch. Is <change-dir> inside a git repository?');
+  process.exit(1);
+}
+
+if (!PROTECTED.includes(branch)) {
+  console.log(`ensure-branch: already isolated on branch '${branch}'. Proceed with implementation edits.`);
+  process.exit(0);
+}
+
+console.error(`ensure-branch: on protected branch '${branch}'. Creating an isolated implementation context...`);
+
+let repoRoot;
+try {
+  repoRoot = resolve((execFileSync('git', ['rev-parse', '--show-toplevel'], GIT_OPTS) || '').trim());
+} catch {
+  console.error('ensure-branch: could not determine the Git repository root.');
+  process.exit(1);
+}
+
+// `git rev-parse --show-toplevel` already succeeded with cwd = changeDir, which
+// proves changeDir lives inside the repository — no path-string comparison
+// needed. Compute the change-dir-relative-to-root path via `git rev-parse
+// --show-prefix` (not `path.relative`) so Windows 8.3 short names, junctions,
+// and case mismatches between git and Node cannot yield a wrong result.
+let changeRelativePath;
+try {
+  changeRelativePath = (execFileSync('git', ['rev-parse', '--show-prefix'], GIT_OPTS) || '').trim().replace(/[\\/]+$/, '');
+} catch {
+  console.error('ensure-branch: could not resolve the change directory relative to the repository root.');
+  process.exit(1);
+}
+
+const sourceChangeDir = resolve(changeDir);
+const repoName = basename(repoRoot) || 'repo';
+// 默认隔离分支名 = change 目录名（与 ssf finish / review 的匹配假设一致：
+// finish 与 R5 WARN 均按 refs/heads/<change-dir-basename> 查找隔离 worktree）。
+const name = changeName || basename(sourceChangeDir) || repoName;
+if (!isSafePathSegment(name)) {
+  console.error('ensure-branch: change name must be a single safe path segment.');
+  process.exit(1);
+}
+// worktree 位于仓库内 changes/worktrees/<name>（.gitignore 已忽略）
+const worktreePath = join(repoRoot, 'changes', 'worktrees', name);
+
+function copyActiveChange(worktreeRoot) {
+  if (!existsSync(sourceChangeDir)) return;
+  const targetChangeDir = join(worktreeRoot, changeRelativePath);
+  mkdirSync(dirname(targetChangeDir), { recursive: true });
+  cpSync(sourceChangeDir, targetChangeDir, {
+    recursive: true,
+    dereference: false,
+    verbatimSymlinks: true,
+  });
+}
+
+// Initialize every (nested) submodule in an isolated context. Literal arg array
+// — no shell string. Returns false (and sets a non-zero exit code) when any
+// submodule cannot be fetched, because an unbuildable worktree must stop the
+// agent. The failure line is written synchronously to stderr: `console.error`
+// followed by `process.exit` can drop the final line before the pipe flushes
+// under Windows/pipe, silently hiding the reason.
+function initSubmodules(contextDir) {
+  if (!existsSync(join(contextDir, '.gitmodules'))) {
+    console.log(`ensure-branch: no .gitmodules in ${contextDir}; skipping submodule initialization.`);
+    return true;
+  }
+  console.log(`ensure-branch: initializing submodules in ${contextDir}...`);
+  try {
+    // A hard timeout: on Windows, `git submodule update` against an unreachable
+    // file:// URL can block for minutes instead of failing fast. Cap it so a
+    // broken submodule stops the agent promptly rather than hanging isolate.
+    execFileSync('git', ['-C', contextDir, 'submodule', 'update', '--init', '--recursive'], { ...GIT_OPTS, cwd: contextDir, timeout: 120000 });
+    return true;
+  } catch (e) {
+    const reason = (e.stderr || e.stdout || e.message || 'unknown').toString().trim();
+    process.stderr.write(`ensure-branch: submodule initialization failed: ${reason}\n`);
+    process.exitCode = 1;
+    return false;
+  }
+}
+
+// Append a cwd-persistence warning to the change's progress ledger. The ledger
+// (and its parent directories) is created when missing; existing content is
+// never overwritten.
+function writeProgressWarning(contextDir) {
+  const progressDir = join(changeDir, '.superpowers', 'sdd');
+  const progressFile = join(progressDir, 'progress.md');
+  mkdirSync(progressDir, { recursive: true });
+  const entry = [
+    '',
+    '## cwd 警告（ensure-branch 自动写入）',
+    '',
+    `- 隔离上下文：\`${contextDir}\``,
+    '- Bash cwd 不持续：每条命令都会回到会话初始目录，不会记住上一次的 cd',
+    `- 强制规则：后续实现编辑必须使用隔离上下文内的绝对路径，或每条命令以前缀 \`cd ${contextDir} &&\` 开头`,
+    '',
+  ].join('\n');
+  appendFileSync(progressFile, entry, 'utf-8');
+  console.log(`ensure-branch: appended cwd warning to ${progressFile}`);
+}
+
+// Preferred: git worktree (literal arg array).
+let worktreeCreated = false;
+try {
+  execFileSync('git', ['worktree', 'add', worktreePath, '-b', name], { ...GIT_OPTS, stdio: 'inherit' });
+  worktreeCreated = true;
+} catch (e) {
+  console.error(`ensure-branch: worktree creation failed: ${(e.stderr || e.stdout || e.message || 'unknown').toString().trim()}`);
+}
+if (worktreeCreated) {
+  if (!initSubmodules(worktreePath)) {
+    process.exit(1);
+  }
+  writeProgressWarning(worktreePath);
+  copyActiveChange(worktreePath);
+  console.log(`ensure-branch: created git worktree at ${worktreePath} on branch '${name}' with active change artifacts. Make all implementation edits there.`);
+  process.exit(0);
+}
+
+// Fallback: local branch (literal arg arrays).
+let branchCreated = false;
+try {
+  execFileSync('git', ['switch', '-c', name], { ...GIT_OPTS, stdio: 'inherit' });
+  branchCreated = true;
+} catch (e) {
+  // A failed `git worktree add -b <name>` may have already created the branch
+  // without materializing the worktree directory, so `git switch -c` collides
+  // with the existing name. Fall back to plain `git switch` onto that branch.
+  try {
+    execFileSync('git', ['switch', name], { ...GIT_OPTS, stdio: 'inherit' });
+    branchCreated = true;
+  } catch (e2) {
+    console.error(`ensure-branch: branch creation failed: ${(e2.stderr || e2.stdout || e2.message || 'unknown').toString().trim()}`);
+  }
+}
+if (branchCreated) {
+  if (!initSubmodules(repoRoot)) {
+    process.exit(1);
+  }
+  writeProgressWarning(repoRoot);
+  console.log(`ensure-branch: created branch '${name}' via git switch -c. Make implementation edits there.`);
+  process.exit(0);
+}
+
+// Both failed → require explicit approval to edit in place.
+if (force) {
+  console.error('ensure-branch: WARNING — editing protected branch in place with --force. This modifies main/master directly.');
+  process.exit(0);
+}
+console.error('ensure-branch: could not create an isolated context and no --force given. STOP and ask the user for explicit approval before editing main/master.');
+process.exit(1);

@@ -1,0 +1,39 @@
+{
+  "name": "spec-superflow",
+  "owner": {
+    "name": "Cinvy",
+    "url": "https://github.com/cinvymoe"
+  },
+  "metadata": {
+    "description": "Spec-first workflow plugins and skills for AI coding agents.",
+    "version": "1.2.0"
+  },
+  "plugins": [
+    {
+      "name": "spec-superflow",
+      "description": "Spec-first workflow with planning artifacts, execution contracts, TDD, review gates, systematic debugging, and delta spec sync.",
+      "version": "1.2.0",
+      "source": ".",
+      "author": {
+        "name": "Cinvy",
+        "url": "https://github.com/cinvymoe"
+      },
+      "homepage": "https://github.com/cinvymoe/dsh-ssf",
+      "repository": "https://github.com/cinvymoe/dsh-ssf",
+      "license": "MIT",
+      "keywords": [
+        "workflow",
+        "skills",
+        "spec-driven-development",
+        "tdd",
+        "sdd",
+        "contract-driven",
+        "code-review",
+        "debugging",
+        "spec-sync"
+      ],
+      "category": "Productivity",
+      "skills": "skills/"
+    }
+  ]
+}

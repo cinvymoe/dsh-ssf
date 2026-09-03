@@ -1,0 +1,3 @@
+# Archived: non-DSH platform symlink
+# Original symlink .agents/skills -> ../skills archived to docs/archive/non-dsh-platforms/.agents/skills
+# DSH-only distribution uses packages/dsh-ssf directly, no .agents/skills symlink needed

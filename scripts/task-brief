@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Extract one task's full text from an implementation plan into a file the
+# implementer reads in one call, so the task text never has to be pasted
+# through the controller's context.
+#
+# Usage: task-brief PLAN_FILE TASK_NUMBER [OUTFILE]
+# Default OUTFILE: <change>/.superpowers/sdd/plans/<plan-identity>/workspace/task-<N>-brief.md
+set -euo pipefail
+
+if [ $# -lt 2 ] || [ $# -gt 3 ]; then
+  echo "usage: task-brief PLAN_FILE TASK_NUMBER [OUTFILE]" >&2
+  exit 2
+fi
+
+plan=$1
+n=$2
+[ -f "$plan" ] || { echo "no such plan file: $plan" >&2; exit 2; }
+
+if [ $# -eq 3 ]; then
+  out=$3
+else
+  script_dir="$(cd "$(dirname "$0")" && pwd)"
+  change_dir="$(cd "$(dirname "$plan")" && pwd)"
+  dir="$(node --input-type=module -e '
+    import { pathToFileURL } from "node:url";
+    const overlay = await import(pathToFileURL(process.argv[1]).href);
+    const scope = overlay.getCurrentPlanScopedPaths(process.argv[2]);
+    if (!scope) throw new Error("task-brief requires a persisted execution plan");
+    process.stdout.write(scope.workspace);
+  ' "$script_dir/lib/sdd-overlay.mjs" "$change_dir")"
+  out="$dir/task-${n}-brief.md"
+fi
+
+mkdir -p "$(dirname "$out")"
+
+awk -v n="$n" '
+  /^```/ { infence = !infence }
+  !infence && /^#+[ \t]+Task[ \t]+[0-9]+/ {
+    intask = ($0 ~ ("^#+[ \t]+Task[ \t]+" n "([^0-9]|$)"))
+  }
+  !infence && /^- \[[ xX]\][ \t]+(\*\*)?[0-9]+\.[0-9]+/ {
+    intask = ($0 ~ ("^- \\[[ xX]\\][ \t]+(\\*\\*)?" n "([^0-9]|$)"))
+  }
+  intask { print }
+' "$plan" > "$out"
+
+if [ ! -s "$out" ]; then
+  echo "task ${n} not found in ${plan} (no matching Task heading or checkbox task line)" >&2
+  exit 3
+fi
+
+echo "wrote ${out}: $(wc -l < "$out" | tr -d ' ') lines"

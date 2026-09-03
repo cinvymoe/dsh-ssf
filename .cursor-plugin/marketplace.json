@@ -1,0 +1,17 @@
+{
+  "_archived": "non-DSH platform, DSH-only distribution - see docs/archive/non-dsh-platforms/.cursor-plugin/marketplace.json",
+  "name": "spec-superflow-marketplace",
+  "owner": {
+    "name": "Cinvy"
+  },
+  "metadata": {
+    "version": "1.2.0",
+    "description": "Archived - DSH-only distribution"
+  },
+  "plugins": [
+    {
+      "name": "spec-superflow",
+      "source": "."
+    }
+  ]
+}

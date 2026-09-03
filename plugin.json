@@ -1,0 +1,36 @@
+{
+  "name": "spec-superflow",
+  "description": "Spec-first workflow that bridges OpenSpec-style planning and Superpowers-style execution discipline.",
+  "version": "1.2.0",
+  "author": {
+    "name": "Cinvy",
+    "url": "https://github.com/cinvymoe"
+  },
+  "homepage": "https://github.com/cinvymoe/dsh-ssf",
+  "repository": "https://github.com/cinvymoe/dsh-ssf",
+  "license": "MIT",
+  "keywords": [
+    "workflow",
+    "skills",
+    "spec-driven-development",
+    "tdd",
+    "sdd",
+    "contract-driven",
+    "code-review",
+    "debugging",
+    "spec-sync",
+    "copilot"
+  ],
+  "category": "Productivity",
+  "skills": [
+    "./skills/bug-investigator",
+    "./skills/build-executor",
+    "./skills/code-reviewer",
+    "./skills/contract-builder",
+    "./skills/need-explorer",
+    "./skills/release-archivist",
+    "./skills/spec-merger",
+    "./skills/spec-writer",
+    "./skills/workflow-start"
+  ]
+}

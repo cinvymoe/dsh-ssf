@@ -1,0 +1,28 @@
+{
+  "name": "spec-superflow",
+  "displayName": "spec-superflow",
+  "description": "Spec-first workflow: integrates OpenSpec planning engine + Superpowers execution discipline. 9 collaborative skills with embedded TDD, SDD, code review, debugging, and delta spec sync.",
+  "version": "1.2.0",
+  "author": {
+    "name": "Cinvy",
+    "url": "https://github.com/cinvymoe"
+  },
+  "homepage": "https://github.com/cinvymoe/dsh-ssf",
+  "repository": "https://github.com/cinvymoe/dsh-ssf",
+  "license": "MIT",
+  "logo": "assets/icon.svg",
+  "keywords": [
+    "workflow",
+    "skills",
+    "spec-driven-development",
+    "tdd",
+    "sdd",
+    "contract-driven",
+    "code-review",
+    "debugging",
+    "spec-sync",
+    "ai-coding"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/"
+}

@@ -1,0 +1,164 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ${{ matrix.os }}
+    if: "!startsWith(github.ref, 'refs/tags/')"
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22]
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: Check version consistency
+        run: node scripts/check-version-consistency.mjs
+      - name: CLI smoke
+        run: |
+          node scripts/spec-superflow.mjs doctor
+          node scripts/spec-superflow.mjs --version
+          node scripts/spec-superflow.mjs config --get execution.inlineThreshold
+      - name: Token efficiency lint (warning only)
+        run: node scripts/lint/lint-skills.mjs --include token
+        continue-on-error: true
+
+  platform-install-smoke:
+    name: Platform Install Smoke (9 platforms)
+    runs-on: ubuntu-latest
+    if: "!startsWith(github.ref, 'refs/tags/')"
+    strategy:
+      matrix:
+        node-version: [20, 22]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Smoke test all 9 platform installers (--local)
+        shell: bash
+        run: |
+          set -e
+          declare -A SKILLS=( [cline]=.cline/skills [kiro]=.kiro/skills [windsurf]=.windsurf/skills [qwen]=.qwen/skills [amazon-q]=.amazonq/skills [roocode]=.roo/skills [continue]=.continue/skills [pi]=.pi/skills )
+          declare -A RULES=( [cline]=.clinerules/phase-guard.md [kiro]=.kiro/steering/phase-guard.md [windsurf]=.windsurf/rules/phase-guard.md [qwen]=.qwen/rules/phase-guard.md [amazon-q]=.amazonq/rules/phase-guard.md [roocode]=.roo/rules/phase-guard.md [continue]=.continue/rules/phase-guard.md )
+          for id in cline kiro windsurf qwen amazon-q roocode continue pi; do
+            tmp="$(mktemp -d)"
+            ( cd "$tmp" && node "$GITHUB_WORKSPACE/scripts/install-$id.mjs" --local "$GITHUB_WORKSPACE" > /dev/null )
+            [ -d "$tmp/${SKILLS[$id]}" ] || { echo "FAIL $id: skills dir missing"; exit 1; }
+            count="$(ls "$tmp/${SKILLS[$id]}" | wc -l | tr -d ' ')"
+            [ "$count" -ge 9 ] || { echo "FAIL $id: only $count skills (expected 9)"; exit 1; }
+            if [ -n "${RULES[$id]:-}" ]; then
+              [ -f "$tmp/${RULES[$id]}" ] || { echo "FAIL $id: phase-guard rule missing"; exit 1; }
+            fi
+            echo "OK $id — 9 skills, rule=${RULES[$id]:-none}"
+          done
+          # CodeBuddy deploys to a user-level config dir via --config-dir (not the
+          # project-level layout used by the 8 installers above). Verify the
+          # settings.json SessionStart contract, the command adapter rewrite, and
+          # the phase-guard alwaysApply:false frontmatter.
+          cb_tmp="$(mktemp -d)"
+          node "$GITHUB_WORKSPACE/scripts/install-codebuddy.mjs" --local "$GITHUB_WORKSPACE" --config-dir "$cb_tmp" > /dev/null
+          [ -d "$cb_tmp/skills" ] || { echo "FAIL codebuddy: skills dir missing"; exit 1; }
+          cb_count="$(ls "$cb_tmp/skills" | wc -l | tr -d ' ')"
+          [ "$cb_count" -ge 9 ] || { echo "FAIL codebuddy: only $cb_count skills (expected 9)"; exit 1; }
+          [ -d "$cb_tmp/commands/ssf" ] || { echo "FAIL codebuddy: commands/ssf missing"; exit 1; }
+          [ -f "$cb_tmp/rules/phase-guard.md" ] || { echo "FAIL codebuddy: phase-guard missing"; exit 1; }
+          [ -f "$cb_tmp/settings.json" ] || { echo "FAIL codebuddy: settings.json missing"; exit 1; }
+          grep -q '"SessionStart"' "$cb_tmp/settings.json" || { echo "FAIL codebuddy: no SessionStart in settings.json"; exit 1; }
+          grep -q 'alwaysApply: false' "$cb_tmp/rules/phase-guard.md" || { echo "FAIL codebuddy: phase-guard frontmatter missing"; exit 1; }
+          ! grep -q 'npx --yes --package spec-superflow@' "$cb_tmp/commands/ssf/resume.md" || { echo "FAIL codebuddy: resume.md still uses npx"; exit 1; }
+          grep -q 'Bash(node:\*)' "$cb_tmp/commands/ssf/resume.md" || { echo "FAIL codebuddy: resume.md allowed-tools not rewritten to node"; exit 1; }
+          rm -rf "$cb_tmp"
+          echo "OK codebuddy — 9 skills, settings.json SessionStart, commands rewritten, phase-guard scoped"
+          echo "All 9 platform installers passed smoke test."
+
+  codebuddy-install-smoke:
+    name: CodeBuddy Install Smoke (Windows shims)
+    runs-on: windows-latest
+    if: "!startsWith(github.ref, 'refs/tags/')"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: CodeBuddy install + Windows shim smoke
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cb_tmp = Join-Path $env:TEMP ("cb-smoke-" + [guid]::NewGuid().ToString('N'))
+          # --no-path keeps the CI runner's real user PATH untouched; shims are
+          # still generated, which is exactly what this smoke verifies.
+          node "$env:GITHUB_WORKSPACE/scripts/install-codebuddy.mjs" --local "$env:GITHUB_WORKSPACE" --config-dir $cb_tmp --no-path | Out-Null
+          $binDir = Join-Path $cb_tmp "spec-superflow/bin"
+          if (!(Test-Path (Join-Path $cb_tmp "skills"))) { throw "FAIL: skills dir missing" }
+          if (!(Test-Path (Join-Path $cb_tmp "commands/ssf"))) { throw "FAIL: commands/ssf missing" }
+          if (!(Test-Path (Join-Path $cb_tmp "rules/phase-guard.md"))) { throw "FAIL: phase-guard missing" }
+          if (!(Test-Path (Join-Path $cb_tmp "settings.json"))) { throw "FAIL: settings.json missing" }
+          # Windows SHALL ship only ssf.cmd + ssf.ps1 (per codebuddy-ssf-path spec).
+          if (!(Test-Path (Join-Path $binDir "ssf.cmd"))) { throw "FAIL: ssf.cmd missing" }
+          if (!(Test-Path (Join-Path $binDir "ssf.ps1"))) { throw "FAIL: ssf.ps1 missing" }
+          if (Test-Path (Join-Path $binDir "ssf")) { throw "FAIL: POSIX ssf must not exist on Windows" }
+          $settings = Get-Content (Join-Path $cb_tmp "settings.json") -Raw
+          if (!$settings.Contains('"SessionStart"')) { throw "FAIL: no SessionStart in settings.json" }
+          $resume = Get-Content (Join-Path $cb_tmp "commands/ssf/resume.md") -Raw
+          if ($resume -match 'npx --yes --package spec-superflow@') { throw "FAIL: resume.md still uses npx" }
+          if (!($resume -match 'Bash\(node:\*\)')) { throw "FAIL: resume.md allowed-tools not rewritten to node" }
+          # Run the CMD shim against the deployed runtime.
+          & (Join-Path $binDir "ssf.cmd") --version | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "FAIL: ssf.cmd --version failed" }
+          Remove-Item -Recurse -Force $cb_tmp
+          Write-Host "OK codebuddy (windows) — Windows shims generated and executable"
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: Check version consistency
+        run: node scripts/check-version-consistency.mjs
+      - name: Verify marketplace release gate
+        env:
+          EXPECTED_VERSION: ${{ github.ref_name }}
+        run: |
+          node scripts/verify-marketplace-release.mjs \
+            --manifest-url https://raw.githubusercontent.com/hashgraph-online/awesome-codex-plugins/main/plugins/cinvymoe/dsh-ssf/.codex-plugin/plugin.json \
+            --expected-version "${EXPECTED_VERSION#v}"
+      - name: Token efficiency lint (warning only)
+        run: node scripts/lint/lint-skills.mjs --include token
+        continue-on-error: true
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# v1.2.0: conditional injection — detects artifacts, injects workflow-start pointer
+# DSH-only distribution: primary path is DSH snapshot + ssf_* tools; legacy platform branches retained for archive compatibility but DSH is canonical
+msg="<EXTREMELY_IMPORTANT>\nYou have spec-superflow installed. Use /spec-superflow:workflow-start ONLY when you detect an active spec-superflow change in the workspace (look for \`.spec-superflow.yaml\`, \`proposal.md\`, \`execution-contract.md\`, or \`specs/\` directories), OR when the user explicitly invokes it by name. For ordinary coding tasks without spec-superflow artifacts, do NOT invoke workflow-start — just handle the request directly.\n</EXTREMELY_IMPORTANT>"
+
+# DSH-only note: DSH web profile provides snapshot via GET /dsh-ssf/snapshot and ssf_* native tools.
+# Legacy platform branches below are retained for archived compatibility; DSH uses generic additionalContext.
+if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
+  printf '{\n  "additional_context": "%s"\n}\n' "$msg"
+elif [ -n "${CODEBUDDY_PROJECT_DIR:-}" ]; then
+  printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$msg"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${COPILOT_CLI:-}" ]; then
+  printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$msg"
+else
+  printf '{\n  "additionalContext": "%s"\n}\n' "$msg"
+fi
+
+exit 0

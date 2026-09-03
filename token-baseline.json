@@ -1,0 +1,94 @@
+{
+  "timestamp": "2026-09-01T06:28:43.084Z",
+  "components": [
+    {
+      "path": "hooks/session-start",
+      "label": "hooks/session-start",
+      "lines": 21,
+      "chars": 1473,
+      "estimatedTokens": 369
+    },
+    {
+      "path": ".claude/always/phase-guard.md",
+      "label": "phase-guard (claude)",
+      "lines": 4,
+      "chars": 160,
+      "estimatedTokens": 57
+    },
+    {
+      "path": "GEMINI.md",
+      "label": "phase-guard (gemini)",
+      "lines": 15,
+      "chars": 709,
+      "estimatedTokens": 194
+    },
+    {
+      "path": "skills/workflow-start/SKILL.md",
+      "label": "skill: workflow-start",
+      "lines": 200,
+      "chars": 23235,
+      "estimatedTokens": 5919
+    },
+    {
+      "path": "skills/need-explorer/SKILL.md",
+      "label": "skill: need-explorer",
+      "lines": 151,
+      "chars": 9097,
+      "estimatedTokens": 2294
+    },
+    {
+      "path": "skills/spec-writer/SKILL.md",
+      "label": "skill: spec-writer",
+      "lines": 141,
+      "chars": 8354,
+      "estimatedTokens": 2111
+    },
+    {
+      "path": "skills/contract-builder/SKILL.md",
+      "label": "skill: contract-builder",
+      "lines": 114,
+      "chars": 6344,
+      "estimatedTokens": 1618
+    },
+    {
+      "path": "skills/build-executor/SKILL.md",
+      "label": "skill: build-executor",
+      "lines": 204,
+      "chars": 21650,
+      "estimatedTokens": 5464
+    },
+    {
+      "path": "skills/bug-investigator/SKILL.md",
+      "label": "skill: bug-investigator",
+      "lines": 192,
+      "chars": 10352,
+      "estimatedTokens": 2612
+    },
+    {
+      "path": "skills/code-reviewer/SKILL.md",
+      "label": "skill: code-reviewer",
+      "lines": 194,
+      "chars": 8898,
+      "estimatedTokens": 2244
+    },
+    {
+      "path": "skills/release-archivist/SKILL.md",
+      "label": "skill: release-archivist",
+      "lines": 157,
+      "chars": 9552,
+      "estimatedTokens": 2425
+    },
+    {
+      "path": "skills/spec-merger/SKILL.md",
+      "label": "skill: spec-merger",
+      "lines": 110,
+      "chars": 6297,
+      "estimatedTokens": 1595
+    }
+  ],
+  "totals": {
+    "lines": 1503,
+    "chars": 106121,
+    "estimatedTokens": 26902
+  }
+}
