@@ -4,7 +4,7 @@ This file provides guidance to AI agents (DSH / DeepSeek Harness, Codex-compatib
 
 ## What This Is
 
-dsh-ssf — DSH-native distribution of spec-superflow, forked from MageByte-Zero/spec-superflow → cinvymoe/dsh-ssf. Integrates OpenSpec-style planning + Superpowers execution discipline with zero runtime dependencies. DSH-native distribution：DeepSeek Harness via packages/dsh-ssf + generic CLI (ssf)；upstream spec-superflow 曾支持 9+ surfaces，现已剥离.
+dsh-ssf — DSH-native distribution of spec-superflow, forked from MageByte-Zero/spec-superflow → cinvymoe/dsh-ssf. Integrates OpenSpec-style planning + Superpowers execution discipline with zero runtime dependencies. DSH-native distribution：DeepSeek Harness via packages/dsh-ssf + generic CLI (dsh-ssf)；upstream spec-superflow 曾支持 9+ surfaces，现已剥离.
 
 ## Commands
 
@@ -28,6 +28,8 @@ bun run validate
 ```
 
 Note: use `bun run test`, not bare `bun test` — the latter invokes Bun's native test runner and bypasses the `node --test` script in package.json.
+
+> Note: code-level bin/tool/snapshot names still keep ssf aliases for compatibility; docs use dsh-ssf uniformly.
 
 ## Architecture
 
@@ -93,7 +95,7 @@ exploring → specifying → bridging → approved-for-build → executing → c
 
 ### Helper Scripts (`scripts/`)
 
-- `spec-superflow.mjs` — CLI entrypoint for `ssf` / `spec-superflow` commands.
+- `spec-superflow.mjs` — CLI entrypoint for `dsh-ssf` / `spec-superflow` commands.
 - `lib/` — CLI subcommand modules (`cmd-validate.mjs`, `cmd-doctor.mjs`, `cmd-state.mjs`, etc.), config loader, hash utilities.
 - `validate-artifacts` — Reads a change directory, validates proposal.md + all specs/*/spec.md, prints a report.
 
@@ -140,7 +142,7 @@ Test data lives in `docs/examples/` — real proposal/spec/design artifacts from
 ## Release Checklist
 
 Refer to `docs/release-checklist.md` before publishing. Key items:
-- Keep `README.md`, `docs/README_en.md`, `INSTALL.md`, `CHANGELOG.md`, and all plugin manifests/installers in sync. Use `ssf version <semver>`.
+- Keep `README.md`, `docs/README_en.md`, `INSTALL.md`, `CHANGELOG.md`, and all plugin manifests/installers in sync. Use `dsh-ssf version <semver>`.
 - Verify all examples are complete (proposal + specs + design + tasks + execution-contract + README)
 - No stray `TODO` or `TBD` markers
 - `package.json` version matches `.claude-plugin/plugin.json` version

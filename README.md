@@ -43,7 +43,7 @@ Agent 会自动检查当前工件目录，**内容级判断**（不看文件时�
 
 本项目以 `dsh-ssf` 插件形式接入 DSH（DeepSeek Harness）web profile，分为两半协同：
 
-- **host 半**：通过 `packages/dsh-ssf` 以原生工具 `ssf_*` 接入 Cordis，并通过 `ssf` 服务与 `snapshot-store` 持久化变更快照（默认 `$DSH_HOME/ssf.json`，可由 `config.path` / `config.dshHome` 覆盖，`0700`/`0600` 权限原子写入）。提供 `scan()` / `summary(changeDir)` / `refresh()` / `getSnapshot()` 等能力，注册 19 个结构化工具（6 读 + 12 写 + `ssf_run` 回退），优先走 `ssf_*` 原生工具、CLI 回退。
+- **host 半**：通过 `packages/dsh-ssf` 以原生工具 `dsh-ssf_*` 接入 Cordis，并通过 `dsh-ssf` 服务与 `snapshot-store` 持久化变更快照（默认 `$DSH_HOME/dsh-ssf.json`，可由 `config.path` / `config.dshHome` 覆盖，`0700`/`0600` 权限原子写入）。提供 `scan()` / `summary(changeDir)` / `refresh()` / `getSnapshot()` 等能力，注册 19 个结构化工具（6 读 + 12 写 + `dsh-ssf_run` 回退），优先走 `dsh-ssf_*` 原生工具、CLI 回退。
 - **client 半**：在 web profile 中提供只读的 **Spec 工作流** conversation tab（`GET /dsh-ssf/snapshot` 轮询，`Cache-Control: no-store`），按当前 workspace 过滤变更、展示状态/工作流/DP 决策与降级标记。
 
 > 完整安装、启用、验证与卸载步骤见 [`packages/dsh-ssf/README.md`](packages/dsh-ssf/README.md)（含 `dsh plugin --profile web add`、profile 补丁 `cordis.patch.yml`、`dsh --profile web` 重启与快照校验）。
@@ -53,39 +53,39 @@ Agent 会自动检查当前工件目录，**内容级判断**（不看文件时�
 CLI 保持与原项目一致的通用命令，不含任何平台专属 `install-*` / `uninstall-*`：
 
 ```bash
-npm install -g spec-superflow    # 全局安装
-npx spec-superflow list          # 或通过 npx 使用
+npm install -g dsh-ssf    # 全局安装
+npx dsh-ssf list          # 或通过 npx 使用
 ```
 
 | 命令 | 功能 |
 |------|------|
-| `ssf list` | 列出所有 changes 及状态 |
-| `ssf validate <dir>` | 验证工件完整性 |
-| `ssf doctor` | 健康检查（版本、hooks、skills、文档一致性） |
-| `ssf version <semver>` | 一键同步版本号到所有 manifest |
-| `ssf state <sub> <dir>` | 管理 `.spec-superflow.yaml` 状态文件 |
-| `ssf inject <dir>` | 生成 phase-guard 产物 |
-| `ssf audit <dir>` | 生成决策点审计报告 |
-| `ssf checkpoint save <dir> --task <id> --next <text>` | 保存任务级会话恢复点 |
-| `ssf checkpoint list <dir>` | 列出 checkpoint 及 stale 状态 |
-| `ssf checkpoint show <dir> <id>` | 查看单个恢复点 |
-| `ssf resume [change]` | 只读恢复摘要；唯一活跃 change 可自动选择 |
-| `ssf switch <change>` | 只读返回明确 change 的恢复上下文 |
-| `ssf save <change> --task <id> --next <text>` | 手动写入兼容 checkpoint；不自动 commit/push/sync |
-| `ssf handoff create <dir> --type <type> ...` | 创建 prototype/research/experiment handoff |
-| `ssf handoff list <dir>` | 列出 handoff 生命周期状态 |
-| `ssf handoff finish <dir> <id>` | 校验 handoff 结果 |
-| `ssf handoff resolve <dir> <id> --decision <decision>` | 记录显式 handoff 决策 |
-| `ssf isolate <dir>` | 实现前强制 git 隔离：在 main/master 时创建 worktree 或分支 |
-| `ssf finish <dir> [--test-cmd <command>]` | 一键收尾：merge --no-ff 回主干、验证同步、执行验证命令，通过才删除 worktree 与分支 |
-| `ssf execution recommend <dir> ...` | 基于任务量、wave 和工作流列出可用执行方式并给出推荐 |
-| `ssf execution plan <dir> ...` | 保存受 guard 保护的执行计划 |
-| `ssf execution show <dir> [--json]` | 查看并校验当前执行计划、wave 与 receipt |
-| `ssf execution revise <dir> ...` | 将已有计划保留/升级为 SDD，并生成新 revision；不允许降级 |
-| `ssf execution review <dir> ...` | 为一个计划 wave 记录 review receipt |
-| `ssf execution adjudicate <dir> ...` | 为 `adjudication-required` wave 授权一次 review |
-| `ssf sync <dir>` | 将 delta spec 发布为基线规范 |
-| `ssf config --resolve-model <profile>` | 只读解析模型 profile |
+| `dsh-ssf list` | 列出所有 changes 及状态 |
+| `dsh-ssf validate <dir>` | 验证工件完整性 |
+| `dsh-ssf doctor` | 健康检查（版本、hooks、skills、文档一致性） |
+| `dsh-ssf version <semver>` | 一键同步版本号到所有 manifest |
+| `dsh-ssf state <sub> <dir>` | 管理 `.spec-superflow.yaml` 状态文件 |
+| `dsh-ssf inject <dir>` | 生成 phase-guard 产物 |
+| `dsh-ssf audit <dir>` | 生成决策点审计报告 |
+| `dsh-ssf checkpoint save <dir> --task <id> --next <text>` | 保存任务级会话恢复点 |
+| `dsh-ssf checkpoint list <dir>` | 列出 checkpoint 及 stale 状态 |
+| `dsh-ssf checkpoint show <dir> <id>` | 查看单个恢复点 |
+| `dsh-ssf resume [change]` | 只读恢复摘要；唯一活跃 change 可自动选择 |
+| `dsh-ssf switch <change>` | 只读返回明确 change 的恢复上下文 |
+| `dsh-ssf save <change> --task <id> --next <text>` | 手动写入兼容 checkpoint；不自动 commit/push/sync |
+| `dsh-ssf handoff create <dir> --type <type> ...` | 创建 prototype/research/experiment handoff |
+| `dsh-ssf handoff list <dir>` | 列出 handoff 生命周期状态 |
+| `dsh-ssf handoff finish <dir> <id>` | 校验 handoff 结果 |
+| `dsh-ssf handoff resolve <dir> <id> --decision <decision>` | 记录显式 handoff 决策 |
+| `dsh-ssf isolate <dir>` | 实现前强制 git 隔离：在 main/master 时创建 worktree 或分支 |
+| `dsh-ssf finish <dir> [--test-cmd <command>]` | 一键收尾：merge --no-ff 回主干、验证同步、执行验证命令，通过才删除 worktree 与分支 |
+| `dsh-ssf execution recommend <dir> ...` | 基于任务量、wave 和工作流列出可用执行方式并给出推荐 |
+| `dsh-ssf execution plan <dir> ...` | 保存受 guard 保护的执行计划 |
+| `dsh-ssf execution show <dir> [--json]` | 查看并校验当前执行计划、wave 与 receipt |
+| `dsh-ssf execution revise <dir> ...` | 将已有计划保留/升级为 SDD，并生成新 revision；不允许降级 |
+| `dsh-ssf execution review <dir> ...` | 为一个计划 wave 记录 review receipt |
+| `dsh-ssf execution adjudicate <dir> ...` | 为 `adjudication-required` wave 授权一次 review |
+| `dsh-ssf sync <dir>` | 将 delta spec 发布为基线规范 |
+| `dsh-ssf config --resolve-model <profile>` | 只读解析模型 profile |
 
 ### 版本
 
@@ -94,34 +94,34 @@ npx spec-superflow list          # 或通过 npx 使用
 - 上游来源：[Fission-AI/OpenSpec](https://github.com/Fission-AI/OpenSpec) 和 [obra/superpowers](https://github.com/obra/superpowers)
 - 版本历史见 [CHANGELOG.md](CHANGELOG.md)
 
-Requirement 标题的规范形式是 `### Requirement: 名称`。为兼容已存在的中文工件，解析器也接受 `### 需求：名称` 和 `### REQ-<ID>: 名称`；其它三级标题不会被当作需求。Delta spec 的规范路径是 `specs/<capability>/spec.md`，扁平的 `specs/<capability>.md` 和根级 `specs/spec.md` 不会被视为合法规范。`ssf sync` 会先校验全部 delta，再一次性发布，任一 delta 无效时不会写入基线或发布回执。
+Requirement 标题的规范形式是 `### Requirement: 名称`。为兼容已存在的中文工件，解析器也接受 `### 需求：名称` 和 `### REQ-<ID>: 名称`；其它三级标题不会被当作需求。Delta spec 的规范路径是 `specs/<capability>/spec.md`，扁平的 `specs/<capability>.md` 和根级 `specs/spec.md` 不会被视为合法规范。`dsh-ssf sync` 会先校验全部 delta，再一次性发布，任一 delta 无效时不会写入基线或发布回执。
 
 ### 活动规格与发布基线
 
-活动工作流只以 `changes/<change>/` 为事实来源：其中的 `specs/` 是可审计的 delta spec。项目根 `specs/` 是发布后的规范基线，不参与活动 change 的状态转换。运行 `ssf sync changes/<change>` 时，CLI 会把 ADDED/MODIFIED/REMOVED/RENAMED 操作应用到根基线的 `## Requirements`，并在 change 状态写入可重算的发布回执。closing 会同时核验 delta 与基线；任一侧同步后被修改，都必须重新同步。
+活动工作流只以 `changes/<change>/` 为事实来源：其中的 `specs/` 是可审计的 delta spec。项目根 `specs/` 是发布后的规范基线，不参与活动 change 的状态转换。运行 `dsh-ssf sync changes/<change>` 时，CLI 会把 ADDED/MODIFIED/REMOVED/RENAMED 操作应用到根基线的 `## Requirements`，并在 change 状态写入可重算的发布回执。closing 会同时核验 delta 与基线；任一侧同步后被修改，都必须重新同步。
 
 ### 插件仓库与使用项目的边界
 
-本仓库发布的是 workflow、模板、脚本、测试和文档，不是某一次真实运行的工作目录。因此不会提交 `changes/<change>/`、`.spec-superflow.yaml`、`.superpowers/` 或 `ssf sync` 生成的根 `specs/`；它们默认由 `.gitignore` 排除。需要展示完整流程时，只维护脱敏、固定的 `docs/examples/` 示例。
+本仓库发布的是 workflow、模板、脚本、测试和文档，不是某一次真实运行的工作目录。因此不会提交 `changes/<change>/`、`.spec-superflow.yaml`、`.superpowers/` 或 `dsh-ssf sync` 生成的根 `specs/`；它们默认由 `.gitignore` 排除。需要展示完整流程时，只维护脱敏、固定的 `docs/examples/` 示例。
 
 在**使用此插件的项目**中，活动输入仍是 `changes/<change>/specs/`，根 `specs/` 仍是可选的发布基线。消费者可按自己的审计或发布要求决定是否将这些项目工件纳入版本控制。
 
 ### 受 guard 保护的执行计划
 
-对 Full/legacy Hotfix，DP-4 不是一段任意文本：开始实现前必须保存并校验 current execution plan。它位于 `<change>/.superpowers/sdd/execution-plan.json`，不写入 `execution-contract.md`。先运行 `ssf execution recommend`，它会根据任务量和 wave 策略列出 `inline`、`batch-inline`、`sdd`，并给出可审计的推荐理由，同时把当前 wave 的推荐凭据保存为 `<change>/.superpowers/sdd/execution-recommendation.json`。
+对 Full/legacy Hotfix，DP-4 不是一段任意文本：开始实现前必须保存并校验 current execution plan。它位于 `<change>/.superpowers/sdd/execution-plan.json`，不写入 `execution-contract.md`。先运行 `dsh-ssf execution recommend`，它会根据任务量和 wave 策略列出 `inline`、`batch-inline`、`sdd`，并给出可审计的推荐理由，同时把当前 wave 的推荐凭据保存为 `<change>/.superpowers/sdd/execution-recommendation.json`。
 
 ```bash
-ssf execution recommend changes/my-change \
+dsh-ssf execution recommend changes/my-change \
   --wave foundation:parallel:1.1,1.2 \
   --wave integration:serial:2.1:foundation --json
-ssf execution plan changes/my-change --mode sdd --confirm --reason "independent work" \
+dsh-ssf execution plan changes/my-change --mode sdd --confirm --reason "independent work" \
   --wave foundation:parallel:1.1,1.2 \
   --wave integration:serial:2.1:foundation
-ssf execution show changes/my-change --json
-ssf execution revise changes/my-change --mode sdd --confirm --reason "need parallel work" \
+dsh-ssf execution show changes/my-change --json
+dsh-ssf execution revise changes/my-change --mode sdd --confirm --reason "need parallel work" \
   --wave foundation:parallel:1.1,1.2 \
   --wave integration:serial:2.1:foundation
-ssf execution review changes/my-change --wave foundation --base <sha> --head <sha> \
+dsh-ssf execution review changes/my-change --wave foundation --base <sha> --head <sha> \
   --report .superpowers/sdd/reviews/foundation.md --verdict pass
 ```
 
@@ -130,16 +130,18 @@ ssf execution review changes/my-change --wave foundation --base <sha> --head <sh
 会话恢复与 checkpoint：
 
 ```bash
-ssf resume                         # 只在唯一活跃 change 时自动选择
-ssf resume changes/my-change       # 只读恢复指定 change 的摘要
-ssf switch changes/another-change  # 只读返回明确 change 的恢复上下文
-ssf save changes/my-change --task 1.1 --next "Run focused tests"
-ssf checkpoint save changes/my-change --task 1.1 --next "Run focused tests"
-ssf checkpoint list changes/my-change
-ssf handoff create changes/my-change --type research --objective "Compare approaches" --expected-output "Recommendation" --acceptance "Evidence recorded"
+dsh-ssf resume                         # 只在唯一活跃 change 时自动选择
+dsh-ssf resume changes/my-change       # 只读恢复指定 change 的摘要
+dsh-ssf switch changes/another-change  # 只读返回明确 change 的恢复上下文
+dsh-ssf save changes/my-change --task 1.1 --next "Run focused tests"
+dsh-ssf checkpoint save changes/my-change --task 1.1 --next "Run focused tests"
+dsh-ssf checkpoint list changes/my-change
+dsh-ssf handoff create changes/my-change --type research --objective "Compare approaches" --expected-output "Recommendation" --acceptance "Evidence recorded"
 ```
 
 `resume` 与 `switch` 都是只读恢复操作，不修改 cwd 或隐藏指针；`save` 仅手动写入既有 checkpoint 协议，绝不自动 commit、push 或 sync。Prototype 只在用户明确确认后创建，handoff 结果不会自动修改 `design.md` 或 `tasks.md`。
+
+注：代码层 bin/工具名/快照文件名仍保留 ssf 兼容别名，本系列文档统一以 dsh-ssf 表述。
 
 ---
 
@@ -177,11 +179,11 @@ dsh-ssf 把这两类问题分开处理：先判断改动风险；小改动直接
 
 **1. 原项目是什么。** 原项目为 [MageByte-Zero/spec-superflow](https://github.com/MageByte-Zero/spec-superflow)（现迁移至 [cinvymoe/dsh-ssf](https://github.com/cinvymoe/dsh-ssf)），本身是 [Fission-AI/OpenSpec](https://github.com/Fission-AI/OpenSpec)（规划引擎：Schema 验证、Delta Spec、工件解析）与 [obra/superpowers](https://github.com/obra/superpowers)（执行纪律：TDD 铁律、SDD 子代理驱动、系统化调试与代码审查）的**源码级融合**，而非简单并列。独创 `contract-builder` 桥接层将 `proposal / specs / design / tasks` 四份规划工件自动提取压缩为 `execution-contract.md`，并以 **8 状态路由**（`exploring → specifying → bridging → approved-for-build → executing → closing`，另含 `debugging` 旁路与 `abandoned` 终态）贯穿全流程。自包含、零运行时依赖，不需要另行安装 OpenSpec 或 Superpowers。
 
-**2. 本仓库做了什么。** 本仓库剥离了原项目面向 Claude Code / Cursor / OpenAI Codex / GitHub Copilot / Gemini / OpenCode / WorkBuddy / Trae 等 **19 个平台**的适配代码（hooks、插件清单、安装器、平台专属规则与 marketplace 配置），**仅保留并强化 DSH（DeepSeek Harness）路径**：host 半以 `packages/dsh-ssf` 原生工具 `ssf_*` + 变更状态快照服务接入 Cordis（`ctx.tools` / `ctx.webServer` / `snapshot-store`），client 半以 Spec 工作流 tab 接入 web profile（`GET /dsh-ssf/snapshot` 轮询）。DSH 小节统一指向 [`packages/dsh-ssf/README.md`](packages/dsh-ssf/README.md)，不再在 README 与 INSTALL 中维护多平台矩阵与安装命令。
+**2. 本仓库做了什么。** 本仓库剥离了原项目面向 Claude Code / Cursor / OpenAI Codex / GitHub Copilot / Gemini / OpenCode / WorkBuddy / Trae 等 **19 个平台**的适配代码（hooks、插件清单、安装器、平台专属规则与 marketplace 配置），**仅保留并强化 DSH（DeepSeek Harness）路径**：host 半以 `packages/dsh-ssf` 原生工具 `dsh-ssf_*` + 变更状态快照服务接入 Cordis（`ctx.tools` / `ctx.webServer` / `snapshot-store`），client 半以 Spec 工作流 tab 接入 web profile（`GET /dsh-ssf/snapshot` 轮询）。DSH 小节统一指向 [`packages/dsh-ssf/README.md`](packages/dsh-ssf/README.md)，不再在 README 与 INSTALL 中维护多平台矩阵与安装命令。
 
 **3. 有什么不变、后续如何同步。** 核心工作流与原项目**完全一致**：9 个 skills、8 状态机、解析/验证引擎（`src/schema` / `src/parsing` / `src/validation`）、模板（`templates/`）、CLI 核心（`scripts/`）与守卫体系均保持一致；DSH 插件只是**执行载体差异**（结构化工具与快照服务替代平台 hooks）。后续 upstream 同步策略：`core` / `skills` / `src` / `templates` / `docs` 等核心持续与上游同步，平台适配层**仅保留 DSH**，不再合回其他平台代码。
 
-**4. 致谢与 rebrand 说明。** 感谢原项目 MageByte-Zero/spec-superflow 的完整设计与实现，以及 OpenSpec 与 Superpowers 两个上游项目提供的引擎与纪律思想。本仓库已完成 rebrand：当前版本 `v1.2.0`，`package.json` 的 `name` 仍为 `spec-superflow` 以保持 `ssf` / `spec-superflow` CLI 兼容，GitHub 仓库地址为 [`cinvymoe/dsh-ssf`](https://github.com/cinvymoe/dsh-ssf)。
+**4. 致谢与 rebrand 说明。** 感谢原项目 MageByte-Zero/spec-superflow 的完整设计与实现，以及 OpenSpec 与 Superpowers 两个上游项目提供的引擎与纪律思想。本仓库已完成 rebrand：当前版本 `v1.2.0`，`package.json` 的 `name` 仍为 `spec-superflow` 以保持 `dsh-ssf` / `spec-superflow` CLI 兼容，GitHub 仓库地址为 [`cinvymoe/dsh-ssf`](https://github.com/cinvymoe/dsh-ssf)。
 
 ---
 
@@ -232,7 +234,7 @@ dsh-ssf 把这两类问题分开处理：先判断改动风险；小改动直接
 
 **如何选择：** Quick、direct Hotfix、Tweak 默认保持轻量，只记录范围和验证；Full 与 legacy Hotfix 才要求执行契约、执行计划和 review receipt。风险会说明原因并交给用户选择，不会擅自升级路径。
 
-**DP-5 调试门禁：** 每次失败修复使用 `ssf debug attempt record` 保存唯一且可验证的证据；无论工作流路径，记录前都必须有 current、有效的 execution plan。Wave Review failure 不会计入调试次数。只有当前 execution context 下至少 3 次不同失败尝试，并由用户执行 `ssf debug escalate ... --confirm` 后，才会记录 DP-5。通用 `state set` 不能写入 `dp_5_*`，且不能通过多行值注入这些字段。
+**DP-5 调试门禁：** 每次失败修复使用 `dsh-ssf debug attempt record` 保存唯一且可验证的证据；无论工作流路径，记录前都必须有 current、有效的 execution plan。Wave Review failure 不会计入调试次数。只有当前 execution context 下至少 3 次不同失败尝试，并由用户执行 `dsh-ssf debug escalate ... --confirm` 后，才会记录 DP-5。通用 `state set` 不能写入 `dp_5_*`，且不能通过多行值注入这些字段。
 
 ### 快速路径（Quick / Hotfix / Tweak）
 
@@ -266,7 +268,7 @@ dsh-ssf 把这两类问题分开处理：先判断改动风险；小改动直接
 | `review` | 与 diff 匹配的代码审查 |
 
 ```bash
-ssf config --resolve-model mechanical
+dsh-ssf config --resolve-model mechanical
 ```
 
 该命令只解析本地配置，不调用平台 API，也不切换当前会话模型。若结果为 `configured: false`，则没有自动选择能力，不能臆造供应商模型。
@@ -285,7 +287,7 @@ ssf config --resolve-model mechanical
 <details>
 <summary><strong>dsh-ssf 和原项目 spec-superflow 什么关系？</strong></summary>
 
-不是竞争性 fork，而是 **DSH 专用发行版**。原项目 [MageByte-Zero/spec-superflow](https://github.com/MageByte-Zero/spec-superflow)（现 [cinvymoe/dsh-ssf](https://github.com/cinvymoe/dsh-ssf)）面向 19 个平台；本仓库仅保留并强化 DSH 路径（host 半 `ssf_*` 原生工具 + snapshot 服务接入 Cordis，client 半 Spec 工作流 tab 接入 web profile），剥离其他平台适配代码。核心工作流（9 skills、状态机、引擎、模板、CLI）与原项目完全一致，后续核心持续与上游同步，平台层仅保留 DSH。`package.json` 仍为 `spec-superflow` 以保持 CLI 兼容，GitHub 仓库已 rebrand 为 `cinvymoe/dsh-ssf`（v1.2.0）。
+不是竞争性 fork，而是 **DSH 专用发行版**。原项目 [MageByte-Zero/spec-superflow](https://github.com/MageByte-Zero/spec-superflow)（现 [cinvymoe/dsh-ssf](https://github.com/cinvymoe/dsh-ssf)）面向 19 个平台；本仓库仅保留并强化 DSH 路径（host 半 `dsh-ssf_*` 原生工具 + snapshot 服务接入 Cordis，client 半 Spec 工作流 tab 接入 web profile），剥离其他平台适配代码。核心工作流（9 skills、状态机、引擎、模板、CLI）与原项目完全一致，后续核心持续与上游同步，平台层仅保留 DSH。`package.json` 仍为 `spec-superflow` 以保持 CLI 兼容，GitHub 仓库已 rebrand 为 `cinvymoe/dsh-ssf`（v1.2.0）。
 
 </details>
 
@@ -306,7 +308,7 @@ ssf config --resolve-model mechanical
 <details>
 <summary><strong>SDD (Subagent-Driven Development) 怎么工作的？</strong></summary>
 
-Full/legacy Hotfix 先由 `ssf execution recommend` 根据任务量和 wave 策略列出 Inline、Batch Inline、SDD 并推荐一种；Agent 展示候选项和理由，用户以 `--confirm` 确认后才保存 plan。Quick/direct Hotfix/Tweak 不创建 plan 或 review receipt，而是报告边界内的验证并写入 `test_result: pass`。Batch Inline 仍是串行。进度台账防止会话压缩后丢失进度。
+Full/legacy Hotfix 先由 `dsh-ssf execution recommend` 根据任务量和 wave 策略列出 Inline、Batch Inline、SDD 并推荐一种；Agent 展示候选项和理由，用户以 `--confirm` 确认后才保存 plan。Quick/direct Hotfix/Tweak 不创建 plan 或 review receipt，而是报告边界内的验证并写入 `test_result: pass`。Batch Inline 仍是串行。进度台账防止会话压缩后丢失进度。
 
 </details>
 

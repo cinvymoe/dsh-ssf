@@ -44,50 +44,52 @@ This repository provides **only two installation paths**: the DSH plugin (recomm
 
 This project plugs into DSH (DeepSeek Harness) web profiles as the `dsh-ssf` plugin. It is split into two halves that work together:
 
-- **Host half** (`packages/dsh-ssf`): registers 19 structured tools on Cordis (`ctx.tools`) — 6 read + 12 write + `ssf_run` fallback — and runs an `ssf` service with a snapshot store. The service exposes `scan()` / `summary(changeDir)` / `refresh()` / `getSnapshot()` over `changes/`, persists `{ changes, workspaces, scannedAt }` to a standalone file (`$DSH_HOME/ssf.json` by default, overridable via `config.path` / `config.dshHome`, created with `0700`/`0600` and written atomically), and serves it via `GET /dsh-ssf/snapshot` (`Cache-Control: no-store`) through `ctx.webServer`. Skills prefer the native `ssf_*` tools and fall back to the `ssf` CLI.
+- **Host half** (`packages/dsh-ssf`): registers 19 structured tools on Cordis (`ctx.tools`) — 6 read + 12 write + `dsh-ssf_run` fallback — and runs a `dsh-ssf` service with a snapshot store. The service exposes `scan()` / `summary(changeDir)` / `refresh()` / `getSnapshot()` over `changes/`, persists `{ changes, workspaces, scannedAt }` to a standalone file (`$DSH_HOME/dsh-ssf.json` by default, overridable via `config.path` / `config.dshHome`, created with `0700`/`0600` and written atomically), and serves it via `GET /dsh-ssf/snapshot` (`Cache-Control: no-store`) through `ctx.webServer`. Skills prefer the native `dsh-ssf_*` tools and fall back to the `dsh-ssf` CLI.
 
-- **Client half**: adds a read-only **Spec Workflow** conversation tab (id `ssf`, order 20) to the web profile. It polls `GET /dsh-ssf/snapshot` every 3s (plus `visibilitychange`), filters to the current session's workspace, lists changes (name / state / workflow, terminal changes last), and shows detail on click (DP decisions, last transition, degradation markers).
+- **Client half**: adds a read-only **Spec Workflow** conversation tab (id `dsh-ssf`, order 20) to the web profile. It polls `GET /dsh-ssf/snapshot` every 3s (plus `visibilitychange`), filters to the current session's workspace, lists changes (name / state / workflow, terminal changes last), and shows detail on click (DP decisions, last transition, degradation markers).
 
-> Full install / enable / verify / uninstall steps are in [`packages/dsh-ssf/README.md`](../packages/dsh-ssf/README.md) — including `dsh plugin --profile web add`, the profile patch `cordis.patch.yml` (`- id: ssf / name: dsh-ssf`), `dsh --profile web` restart, and snapshot verification (`cat ~/.dsh/ssf.json` and `GET /dsh-ssf/snapshot`).
+> Full install / enable / verify / uninstall steps are in [`packages/dsh-ssf/README.md`](../packages/dsh-ssf/README.md) — including `dsh plugin --profile web add`, the profile patch `cordis.patch.yml` (`- id: dsh-ssf / name: dsh-ssf`), `dsh --profile web` restart, and snapshot verification (`cat ~/.dsh/dsh-ssf.json` and `GET /dsh-ssf/snapshot`).
 
 ### CLI Toolchain
 
 The CLI keeps the generic commands shared with the upstream, with no platform-specific `install-*` / `uninstall-*`:
 
 ```bash
-npm install -g spec-superflow    # global install
-npx spec-superflow list          # or via npx
+npm install -g dsh-ssf    # global install
+npx dsh-ssf list          # or via npx
 ```
 
 | Command | Purpose |
 |---------|---------|
-| `ssf list` | List all changes and status |
-| `ssf validate <dir>` | Validate artifact completeness |
-| `ssf doctor` | Health check (versions, hooks, skills, docs) |
-| `ssf version <semver>` | Sync version across all manifests |
-| `ssf state <sub> <dir>` | Manage `.spec-superflow.yaml` state file |
-| `ssf inject <dir>` | Generate phase-guard artifacts |
-| `ssf audit <dir>` | Generate decision-point audit report |
-| `ssf checkpoint save <dir> --task <id> --next <text>` | Save a task-level recovery checkpoint |
-| `ssf checkpoint list <dir>` | List checkpoints and stale status |
-| `ssf checkpoint show <dir> <id>` | Show one recovery checkpoint |
-| `ssf resume [change]` | Read-only recovery summary; auto-selects the only active change |
-| `ssf switch <change>` | Read-only recovery context for an explicit change |
-| `ssf save <change> --task <id> --next <text>` | Manually reuses the existing checkpoint protocol; never commits/pushes/syncs |
-| `ssf handoff create <dir> --type <type> ...` | Create a prototype/research/experiment handoff |
-| `ssf handoff list <dir>` | List handoff lifecycle status |
-| `ssf handoff finish <dir> <id>` | Validate a handoff result |
-| `ssf handoff resolve <dir> <id> --decision <decision>` | Record an explicit handoff decision |
-| `ssf isolate <dir>` | Enforce git isolation before implementation: worktree or branch on main/master |
-| `ssf finish <dir> [--test-cmd <command>]` | One-command close-out: merge --no-ff, verify sync, run verification command, clean worktree |
-| `ssf execution recommend <dir> ...` | List available execution modes and recommendation |
-| `ssf execution plan <dir> ...` | Save a guarded execution plan |
-| `ssf execution show <dir> [--json]` | Show and verify current execution plan and receipts |
-| `ssf execution revise <dir> ...` | Retain/upgrade plan to SDD, new revision; downgrades rejected |
-| `ssf execution review <dir> ...` | Record a review receipt for a wave |
-| `ssf execution adjudicate <dir> ...` | Authorize one review for an `adjudication-required` wave |
-| `ssf sync <dir>` | Publish delta specs to baseline specs |
-| `ssf config --resolve-model <profile>` | Resolve a model profile (read-only, no API call) |
+| `dsh-ssf list` | List all changes and status |
+| `dsh-ssf validate <dir>` | Validate artifact completeness |
+| `dsh-ssf doctor` | Health check (versions, hooks, skills, docs) |
+| `dsh-ssf version <semver>` | Sync version across all manifests |
+| `dsh-ssf state <sub> <dir>` | Manage `.spec-superflow.yaml` state file |
+| `dsh-ssf inject <dir>` | Generate phase-guard artifacts |
+| `dsh-ssf audit <dir>` | Generate decision-point audit report |
+| `dsh-ssf checkpoint save <dir> --task <id> --next <text>` | Save a task-level recovery checkpoint |
+| `dsh-ssf checkpoint list <dir>` | List checkpoints and stale status |
+| `dsh-ssf checkpoint show <dir> <id>` | Show one recovery checkpoint |
+| `dsh-ssf resume [change]` | Read-only recovery summary; auto-selects the only active change |
+| `dsh-ssf switch <change>` | Read-only recovery context for an explicit change |
+| `dsh-ssf save <change> --task <id> --next <text>` | Manually reuses the existing checkpoint protocol; never commits/pushes/syncs |
+| `dsh-ssf handoff create <dir> --type <type> ...` | Create a prototype/research/experiment handoff |
+| `dsh-ssf handoff list <dir>` | List handoff lifecycle status |
+| `dsh-ssf handoff finish <dir> <id>` | Validate a handoff result |
+| `dsh-ssf handoff resolve <dir> <id> --decision <decision>` | Record an explicit handoff decision |
+| `dsh-ssf isolate <dir>` | Enforce git isolation before implementation: worktree or branch on main/master |
+| `dsh-ssf finish <dir> [--test-cmd <command>]` | One-command close-out: merge --no-ff, verify sync, run verification command, clean worktree |
+| `dsh-ssf execution recommend <dir> ...` | List available execution modes and recommendation |
+| `dsh-ssf execution plan <dir> ...` | Save a guarded execution plan |
+| `dsh-ssf execution show <dir> [--json]` | Show and verify current execution plan and receipts |
+| `dsh-ssf execution revise <dir> ...` | Retain/upgrade plan to SDD, new revision; downgrades rejected |
+| `dsh-ssf execution review <dir> ...` | Record a review receipt for a wave |
+| `dsh-ssf execution adjudicate <dir> ...` | Authorize one review for an `adjudication-required` wave |
+| `dsh-ssf sync <dir>` | Publish delta specs to baseline specs |
+| `dsh-ssf config --resolve-model <profile>` | Resolve a model profile (read-only, no API call) |
+
+> Note: code-level bin/tool/snapshot names still keep ssf aliases for compatibility; docs use dsh-ssf uniformly.
 
 ### Version
 
@@ -96,15 +98,15 @@ npx spec-superflow list          # or via npx
 - Upstream: [Fission-AI/OpenSpec](https://github.com/Fission-AI/OpenSpec), [obra/superpowers](https://github.com/obra/superpowers)
 - Changelog: [CHANGELOG.md](../CHANGELOG.md)
 
-Canonical requirement heading is `### Requirement: name`. For existing Chinese artifacts the parser also accepts `### 需求：name` and `### REQ-<ID>: name`. Canonical delta specs live at `specs/<capability>/spec.md`; flat `specs/<capability>.md` and root `specs/spec.md` are not canonical. `ssf sync` validates every delta before publishing.
+Canonical requirement heading is `### Requirement: name`. For existing Chinese artifacts the parser also accepts `### 需求：name` and `### REQ-<ID>: name`. Canonical delta specs live at `specs/<capability>/spec.md`; flat `specs/<capability>.md` and root `specs/spec.md` are not canonical. `dsh-ssf sync` validates every delta before publishing.
 
 ### Active specs and published baselines
 
-An active workflow's single source of truth is `changes/<change>/` with auditable delta specs. Root `specs/` is the published baseline and never drives active transitions. `ssf sync changes/<change>` applies ADDED/MODIFIED/REMOVED/RENAMED to the baseline and writes a recomputable publication receipt. Closing verifies both; editing either after sync requires another sync.
+An active workflow's single source of truth is `changes/<change>/` with auditable delta specs. Root `specs/` is the published baseline and never drives active transitions. `dsh-ssf sync changes/<change>` applies ADDED/MODIFIED/REMOVED/RENAMED to the baseline and writes a recomputable publication receipt. Closing verifies both; editing either after sync requires another sync.
 
 ### Plugin repository versus consuming project
 
-This repository ships workflow, templates, scripts, tests, and docs — not the runtime output of a real change. It does not commit `changes/<change>/`, `.spec-superflow.yaml`, `.superpowers/`, or root `specs/` generated by `ssf sync` (ignored by default). Curated `docs/examples/` holds sanitized fixtures. In a consuming project, `changes/<change>/specs/` remains the active input and root `specs/` remains an optional baseline.
+This repository ships workflow, templates, scripts, tests, and docs — not the runtime output of a real change. It does not commit `changes/<change>/`, `.spec-superflow.yaml`, `.superpowers/`, or root `specs/` generated by `dsh-ssf sync` (ignored by default). Curated `docs/examples/` holds sanitized fixtures. In a consuming project, `changes/<change>/specs/` remains the active input and root `specs/` remains an optional baseline.
 
 ---
 
@@ -142,11 +144,11 @@ This repository is not a competing fork of the original project, but its **DSH-n
 
 **1. Origin.** The original project is [MageByte-Zero/spec-superflow](https://github.com/MageByte-Zero/spec-superflow) (now migrated to [cinvymoe/dsh-ssf](https://github.com/cinvymoe/dsh-ssf)). It is a **source-level fusion** of [Fission-AI/OpenSpec](https://github.com/Fission-AI/OpenSpec) (planning engine: Schema validation, Delta Spec, artifact parsing) and [obra/superpowers](https://github.com/obra/superpowers) (execution discipline: TDD Iron Law, SDD subagent-driven development, systematic debugging and code review) — not a side-by-side install. It adds a unique `contract-builder` bridge that auto-extracts and compresses the four planning artifacts (`proposal / specs / design / tasks`) into `execution-contract.md`, and runs an **8-state router** (`exploring → specifying → bridging → approved-for-build → executing → closing`, plus `debugging` side-track and `abandoned` terminal) throughout the workflow. Self-contained with zero runtime dependencies — no upstream runtimes needed.
 
-**2. What this distribution does.** This repo strips the original's adapter code for **19 platforms** (Claude Code, Cursor, OpenAI Codex, GitHub Copilot, Gemini, OpenCode, WorkBuddy, Trae, and others — hooks, plugin manifests, installers, platform-specific rules and marketplace configs) and **keeps and strengthens only the DSH (DeepSeek Harness) path**: host half via `packages/dsh-ssf` native tools `ssf_*` + change-status snapshot service on Cordis (`ctx.tools` / `ctx.webServer` / `snapshot-store` with `$DSH_HOME/ssf.json` and `GET /dsh-ssf/snapshot`), client half via the read-only Spec Workflow tab in the web profile. The DSH section above is the single source of truth and points to [`packages/dsh-ssf/README.md`](../packages/dsh-ssf/README.md); the multi-platform matrix and install commands are no longer maintained in README or INSTALL.
+**2. What this distribution does.** This repo strips the original's adapter code for **19 platforms** (Claude Code, Cursor, OpenAI Codex, GitHub Copilot, Gemini, OpenCode, WorkBuddy, Trae, and others — hooks, plugin manifests, installers, platform-specific rules and marketplace configs) and **keeps and strengthens only the DSH (DeepSeek Harness) path**: host half via `packages/dsh-ssf` native tools `dsh-ssf_*` + change-status snapshot service on Cordis (`ctx.tools` / `ctx.webServer` / `snapshot-store` with `$DSH_HOME/dsh-ssf.json` and `GET /dsh-ssf/snapshot`), client half via the read-only Spec Workflow tab in the web profile. The DSH section above is the single source of truth and points to [`packages/dsh-ssf/README.md`](../packages/dsh-ssf/README.md); the multi-platform matrix and install commands are no longer maintained in README or INSTALL.
 
 **3. What stays the same and sync strategy.** The core workflow is **unchanged** from upstream: 9 skills, 8-state machine, parsing/validation engine (`src/schema` / `src/parsing` / `src/validation`), templates (`templates/`), CLI core (`scripts/`), and the guard system are identical. The DSH plugin is only a **carrier difference** (structured tools and snapshot service replacing platform hooks). Upstream sync strategy: `core` / `skills` / `src` / `templates` / `docs` continue to sync with upstream; the platform adapter layer **remains DSH-only** and will not re-merge other platforms.
 
-**4. Acknowledgement & rebrand.** Thanks to the original project MageByte-Zero/spec-superflow for the complete design and implementation, and to OpenSpec and Superpowers for the engine and discipline ideas. This repository has been rebranded at `v1.2.0`; `package.json` `name` remains `spec-superflow` for `ssf` / `spec-superflow` CLI compatibility, and the GitHub repository is [`cinvymoe/dsh-ssf`](https://github.com/cinvymoe/dsh-ssf).
+**4. Acknowledgement & rebrand.** Thanks to the original project MageByte-Zero/spec-superflow for the complete design and implementation, and to OpenSpec and Superpowers for the engine and discipline ideas. This repository has been rebranded at `v1.2.0`; `package.json` `name` remains `spec-superflow` for `dsh-ssf` / `spec-superflow` CLI compatibility, and the GitHub repository is [`cinvymoe/dsh-ssf`](https://github.com/cinvymoe/dsh-ssf).
 
 ---
 
@@ -197,21 +199,21 @@ You: "add authorization to the API"
 
 **Path selection:** Quick, direct Hotfix, and Tweak remain lightweight: record the boundary and verification only. Full and legacy Hotfix require an execution contract, execution plan, and review receipt. Risks are explained for the user to choose from; they do not silently upgrade a path.
 
-**DP-5 debugging gate:** Record every failed fix with `ssf debug attempt record` and distinct, verifiable evidence. Every workflow path must have a current, valid execution plan before recording an attempt. Wave Review failures do not count as debugging attempts. DP-5 is persisted only after at least three failed attempts in that plan context and an explicit `ssf debug escalate ... --confirm`.
+**DP-5 debugging gate:** Record every failed fix with `dsh-ssf debug attempt record` and distinct, verifiable evidence. Every workflow path must have a current, valid execution plan before recording an attempt. Wave Review failures do not count as debugging attempts. DP-5 is persisted only after at least three failed attempts in that plan context and an explicit `dsh-ssf debug escalate ... --confirm`.
 
 ### Guarded execution plans
 
-For Full/legacy Hotfix, DP-4 is a persisted, current execution plan at `<change>/.superpowers/sdd/execution-plan.json`. Run `ssf execution recommend` first — it lists `inline`, `batch-inline`, and `sdd` with auditable reasons and saves a receipt at `<change>/.superpowers/sdd/execution-recommendation.json`. The agent presents the recommendation and the user confirms with `--confirm`; `plan` and `revise` require a receipt matching current artifacts and waves. A non-recommended choice also requires `--acknowledge-recommendation`.
+For Full/legacy Hotfix, DP-4 is a persisted, current execution plan at `<change>/.superpowers/sdd/execution-plan.json`. Run `dsh-ssf execution recommend` first — it lists `inline`, `batch-inline`, and `sdd` with auditable reasons and saves a receipt at `<change>/.superpowers/sdd/execution-recommendation.json`. The agent presents the recommendation and the user confirms with `--confirm`; `plan` and `revise` require a receipt matching current artifacts and waves. A non-recommended choice also requires `--acknowledge-recommendation`.
 
 ```bash
-ssf execution recommend changes/my-change \
+dsh-ssf execution recommend changes/my-change \
   --wave foundation:parallel:1.1,1.2 \
   --wave integration:serial:2.1:foundation --json
-ssf execution plan changes/my-change --mode sdd --confirm --reason "independent work" \
+dsh-ssf execution plan changes/my-change --mode sdd --confirm --reason "independent work" \
   --wave foundation:parallel:1.1,1.2 \
   --wave integration:serial:2.1:foundation
-ssf execution show changes/my-change --json
-ssf execution review changes/my-change --wave foundation --base <sha> --head <sha> \
+dsh-ssf execution show changes/my-change --json
+dsh-ssf execution review changes/my-change --wave foundation --base <sha> --head <sha> \
   --report .superpowers/sdd/reviews/foundation.md --verdict pass
 ```
 
@@ -238,7 +240,7 @@ dsh-ssf is a source-level fusion, not side-by-side installation. It absorbs Open
 <details>
 <summary><strong>How does dsh-ssf relate to the original spec-superflow?</strong></summary>
 
-It is not a competing fork but a **DSH-native distribution** of the original. The original [MageByte-Zero/spec-superflow](https://github.com/MageByte-Zero/spec-superflow) (now [cinvymoe/dsh-ssf](https://github.com/cinvymoe/dsh-ssf)) targeted 19 platforms; this repo strips all non-DSH adapters and keeps only the DSH host (19 `ssf_*` tools + snapshot via Cordis, `$DSH_HOME/ssf.json` served at `GET /dsh-ssf/snapshot`) and the client Spec tab. Core workflow (9 skills, state machine, parsers, templates, CLI core) is unchanged and continues to sync with upstream; the platform layer stays DSH-only. `package.json` remains `spec-superflow` for CLI compatibility, rebranded at `v1.2.0` to `cinvymoe/dsh-ssf`.
+It is not a competing fork but a **DSH-native distribution** of the original. The original [MageByte-Zero/spec-superflow](https://github.com/MageByte-Zero/spec-superflow) (now [cinvymoe/dsh-ssf](https://github.com/cinvymoe/dsh-ssf)) targeted 19 platforms; this repo strips all non-DSH adapters and keeps only the DSH host (19 `dsh-ssf_*` tools + snapshot via Cordis, `$DSH_HOME/dsh-ssf.json` served at `GET /dsh-ssf/snapshot`) and the client Spec tab. Core workflow (9 skills, state machine, parsers, templates, CLI core) is unchanged and continues to sync with upstream; the platform layer stays DSH-only. `package.json` remains `dsh-ssf` for CLI compatibility, rebranded at `v1.2.0` to `cinvymoe/dsh-ssf`.
 
 </details>
 
@@ -259,7 +261,7 @@ Content-level detection, not timestamps: proposal scope changed, approved spec b
 <details>
 <summary><strong>How does SDD (Subagent-Driven Development) work?</strong></summary>
 
-For Full/legacy Hotfix, `ssf execution recommend` first presents Inline, Batch Inline, and SDD with evidence from the change, then recommends one. The user confirms a selection with `--confirm`. The saved execution plan at `<change>/.superpowers/sdd/execution-plan.json` names waves, dependencies, and strategies before dispatching implementers. Each wave gets a review report and a `pass`/`fail` receipt. Batch Inline remains serial.
+For Full/legacy Hotfix, `dsh-ssf execution recommend` first presents Inline, Batch Inline, and SDD with evidence from the change, then recommends one. The user confirms a selection with `--confirm`. The saved execution plan at `<change>/.superpowers/sdd/execution-plan.json` names waves, dependencies, and strategies before dispatching implementers. Each wave gets a review report and a `pass`/`fail` receipt. Batch Inline remains serial.
 
 </details>
 

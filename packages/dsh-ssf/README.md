@@ -1,50 +1,52 @@
-# dsh-ssf — spec-superflow as a DeepSeek Harness plugin
+# dsh-ssf — dsh-ssf as a DeepSeek Harness plugin
 
-`dsh-ssf` packages [spec-superflow](https://github.com/spec-superflow/spec-superflow) as a
+`dsh-ssf` packages dsh-ssf as a
 DSH (Cordis) plugin: the host half exposes the workflow state machine through
 native structured tools and persists change-status snapshots to a standalone
-file (`$DSH_HOME/ssf.json` by default, configurable via `config.path`); the
+file (`$DSH_HOME/dsh-ssf.json` by default, configurable via `config.path`); the
 browser half polls `GET /dsh-ssf/snapshot` and renders a read-only
 **Spec 工作流** conversation tab. No data is written to `settings.yaml`.
+
+Upstream acknowledgement: forked from [spec-superflow](https://github.com/spec-superflow/spec-superflow).
 
 ## Capabilities
 
 Host half (`lib/index.js`):
 
-- `ssf` service: `scan()` / `summary(changeDir)` / `refresh()` / `getSnapshot()`
+- `dsh-ssf` service: `scan()` / `summary(changeDir)` / `refresh()` / `getSnapshot()`
   over the workspace `changes/` directory.
 - Standalone snapshot file: `snapshot-store.js` persists
-  `{ changes, workspaces, scannedAt }` to `$DSH_HOME/ssf.json` (or
+  `{ changes, workspaces, scannedAt }` to `$DSH_HOME/dsh-ssf.json` (or
   `config.path`, with `config.dshHome` overriding the home), created with
   `0700`/`0600` and written atomically; `GET /dsh-ssf/snapshot` (via
   `ctx.webServer`) serves the in-memory snapshot with `Cache-Control: no-store`.
 
-Structured tools (`lib/tools.js`, registered on `ctx.tools`): 19 `ssf_*` tools (6 read + 12 write + `ssf_run` fallback — 19 total; `ssf_run` retained for uncovered subcommands):
+Structured tools (`lib/tools.js`, registered on `ctx.tools`): 19 `dsh-ssf_*` tools (6 read + 12 write + `dsh-ssf_run` fallback — 19 total; `dsh-ssf_run` retained for uncovered subcommands):
 
 | Tool | Purpose |
 |---|---|
-| `ssf_list` | List all changes with state machine summary |
-| `ssf_state` | Raw `.spec-superflow.yaml` fields for one change (with degradation markers) |
-| `ssf_workflow` | Workflow receipt summary (path, status, recommendation) |
-| `ssf_execution` | Persisted execution plan summary (waves + eligibility) |
-| `ssf_validate` | Artifact validation report (proposal + delta specs) |
-| `ssf_guard` | Phase-transition guard check (from/to states) |
-| `ssf_state_write` | Write state machine fields for a change (init/set/transition/rebuild) |
-| `ssf_workflow_write` | Write workflow selection for a change (recommend/select/accept/evidence/escalate) |
-| `ssf_execution_write` | Write execution plan for a change (recommend/plan/revise/resync/review) |
-| `ssf_checkpoint` | Manage checkpoints for a change (save/list/show) |
-| `ssf_handoff` | Manage handoff contracts for a change (create/list/finish/resolve) |
-| `ssf_debug` | Manage debugging attempts for a change (record_attempt/show_attempts/escalate) |
-| `ssf_isolate` | Isolate a change into a git worktree (--force/--isolate) |
-| `ssf_finish` | Finish a change (merge, verify, clean worktree) |
-| `ssf_inject` | Generate phase-guard injection artifacts |
-| `ssf_sync` | Publish delta as canonical baseline specs |
-| `ssf_audit` | Generate decision-point audit report |
-| `ssf_runtime` | Execute runtime operations (asset_read/config_get/resolve_model/check_update/infer) |
-| `ssf_run` | Fallback: run any `ssf` subcommand, return stdout/stderr/exit code — retained for commands not covered by the 18 structured tools |
+| `dsh-ssf_list` | List all changes with state machine summary |
+| `dsh-ssf_state` | Raw `.spec-superflow.yaml` fields for one change (with degradation markers) |
+| `dsh-ssf_workflow` | Workflow receipt summary (path, status, recommendation) |
+| `dsh-ssf_execution` | Persisted execution plan summary (waves + eligibility) |
+| `dsh-ssf_validate` | Artifact validation report (proposal + delta specs) |
+| `dsh-ssf_guard` | Phase-transition guard check (from/to states) |
+| `dsh-ssf_state_write` | Write state machine fields for a change (init/set/transition/rebuild) |
+| `dsh-ssf_workflow_write` | Write workflow selection for a change (recommend/select/accept/evidence/escalate) |
+| `dsh-ssf_execution_write` | Write execution plan for a change (recommend/plan/revise/resync/review) |
+| `dsh-ssf_checkpoint` | Manage checkpoints for a change (save/list/show) |
+| `dsh-ssf_handoff` | Manage handoff contracts for a change (create/list/finish/resolve) |
+| `dsh-ssf_debug` | Manage debugging attempts for a change (record_attempt/show_attempts/escalate) |
+| `dsh-ssf_isolate` | Isolate a change into a git worktree (--force/--isolate) |
+| `dsh-ssf_finish` | Finish a change (merge, verify, clean worktree) |
+| `dsh-ssf_inject` | Generate phase-guard injection artifacts |
+| `dsh-ssf_sync` | Publish delta as canonical baseline specs |
+| `dsh-ssf_audit` | Generate decision-point audit report |
+| `dsh-ssf_runtime` | Execute runtime operations (asset_read/config_get/resolve_model/check_update/infer) |
+| `dsh-ssf_run` | Fallback: run any `dsh-ssf` subcommand, return stdout/stderr/exit code — retained for commands not covered by the 18 structured tools |
 
 Browser half (`client.js`): the **Spec 工作流** conversation tab
-(id `ssf`, order 20) — polls `GET /dsh-ssf/snapshot` every 3s (plus
+(id `dsh-ssf`, order 20) — polls `GET /dsh-ssf/snapshot` every 3s (plus
 `visibilitychange`), filters to the current session's workspace, lists
 changes (name/state/workflow, terminal changes last), click for detail
 (DP decisions, last transition, degradation markers), empty state when no
@@ -55,8 +57,8 @@ snapshot is available.
 Prerequisites: a DSH web profile (this README uses `web`), Node ≥ 20.
 
 ```bash
-# from the spec-superflow repository root
-dsh plugin --profile web add /mnt/sdb1/opencode-plug/spec-superflow/packages/dsh-ssf
+# from the dsh-ssf repository root
+dsh plugin --profile web add /mnt/sdb1/opencode-plug/dsh-ssf/packages/dsh-ssf
 ```
 
 Enable the plugin in the profile patch layer. Append to
@@ -64,7 +66,7 @@ Enable the plugin in the profile patch layer. Append to
 
 ```yaml
 - insert:
-    - id: ssf
+    - id: dsh-ssf
       name: dsh-ssf
 ```
 
@@ -84,17 +86,19 @@ dsh --profile web
 
 1. Open the Web GUI — the **Spec 工作流** conversation tab (next to Chat)
    lists the current workspace's changes with state/workflow; selecting one
-   shows its DP decisions. The snapshot is backed by `$DSH_HOME/ssf.json`
-   (check `cat ~/.dsh/ssf.json` contains `changes/workspaces/scannedAt`) and
+   shows its DP decisions. The snapshot is backed by `$DSH_HOME/dsh-ssf.json`
+   (check `cat ~/.dsh/dsh-ssf.json` contains `changes/workspaces/scannedAt`) and
    served at `GET /dsh-ssf/snapshot` (not `settings.yaml`).
-2. In a session, the agent tool list contains `ssf_*`; calling `ssf_state`
+2. In a session, the agent tool list contains `dsh-ssf_*`; calling `dsh-ssf_state`
    returns the structured JSON state for a change.
-3. `settings.yaml` no longer contains an `ssf:` section; the profile log shows
+3. `settings.yaml` no longer contains an `dsh-ssf:` section; the profile log shows
    no plugin load errors.
+
+Note: code-level bin/tool/snapshot names still keep ssf aliases for compatibility; docs use dsh-ssf uniformly.
 
 ## Uninstall
 
-1. Remove the `- id: ssf` row from `$DSH_HOME/profiles/web/cordis.patch.yml`.
+1. Remove the `- id: dsh-ssf` row from `$DSH_HOME/profiles/web/cordis.patch.yml`.
 2. `dsh plugin --profile web remove dsh-ssf`
 
 ## Development notes

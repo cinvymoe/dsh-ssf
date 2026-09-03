@@ -1,6 +1,6 @@
 # workflow-start 执行流程与 skill 加载流程
 
-本文用流程图逐步说明:workflow-start 开始后的执行过程,以及各 skill 的加载与执行过程。适用于理解 spec-superflow 的调度机制(状态机详见 [state-machine.md](state-machine.md))。
+本文用流程图逐步说明:workflow-start 开始后的执行过程,以及各 skill 的加载与执行过程。适用于理解 dsh-ssf 的调度机制(状态机详见 [state-machine.md](state-machine.md))。
 
 ## 第 0 步:skill 是怎么被加载的(加载机制)
 
@@ -15,7 +15,7 @@ flowchart TD
     E -->|是| F[会话上下文已含 workflow-start 指针]
     E -->|否| G[普通任务, 不加载, 直接处理]
     F --> H[Agent 用 skill 工具加载<br/>workflow-start/SKILL.md 全文进入上下文]
-    H --> I[SKILL.md 中的指令成为本次执行的约束<br/>所有 ssf 命令逐条执行]
+    H --> I[SKILL.md 中的指令成为本次执行的约束<br/>所有 dsh-ssf 命令逐条执行]
 ```
 
 关键点: DSH 插件与通用 CLI 共用同一份 `SKILL.md`（历史曾覆盖 Claude Code / Cursor / Codex / Copilot / Gemini / OpenCode / WorkBuddy / Trae 等九个平台，已剥离为 DSH-only，仅保留 DSH 插件与 CLI 路径；历史平台差异仅在 hook 注入的输出格式 `additionalContext` vs `hookSpecificOutput`）。
@@ -27,16 +27,16 @@ flowchart TD
     S[workflow-start SKILL.md 加载完毕] --> A[① 终态短路检测<br/>读 .spec-superflow.yaml 的 state]
     A -->|state = closing / abandoned| TERM[🛑 停止<br/>输出标准报告: 当前状态+证据+next=none<br/>不跑任何后续步骤]
     A -->|非终态| B[② 初始化]
-    B --> B1[ssf runtime check-update<br/>退出码 0=继续 1=提示升级 2=跳过]
+    B --> B1[dsh-ssf runtime check-update<br/>退出码 0=继续 1=提示升级 2=跳过]
     B --> B2[检查 change 目录内容<br/>proposal.md? specs/? design.md? tasks.md?<br/>execution-contract.md? 用户批准过契约吗?]
-    B2 --> C[③ Overlay 恢复扫描<br/>ssf handoff list + ssf checkpoint list]
-    C -->|有 result-ready handoff| C1[先让用户 review + ssf handoff resolve<br/>才能恢复受影响工作]
-    C -->|无| D[④ Execution-control 恢复扫描<br/>仅 Full/legacy Hotfix 在 approved-for-build/<br/>executing/debugging 时: ssf execution show]
+    B2 --> C[③ Overlay 恢复扫描<br/>dsh-ssf handoff list + dsh-ssf checkpoint list]
+    C -->|有 result-ready handoff| C1[先让用户 review + dsh-ssf handoff resolve<br/>才能恢复受影响工作]
+    C -->|无| D[④ Execution-control 恢复扫描<br/>仅 Full/legacy Hotfix 在 approved-for-build/<br/>executing/debugging 时: dsh-ssf execution show]
     D --> D1{current:true 且<br/>waves[].eligible:true?}
     D1 -->|是| E[可以开工 wave]
     D1 -->|否| E
     E --> F{⑤ 快速路径?<br/>Quick ≤3文件 / Hotfix ≤2文件 / Tweak ≤4配置}
-    F -->|是| FP[直接推荐+同一轮接受<br/>ssf workflow accept --verification tdd|new-test|bounded<br/>跳过规划工件/契约/DP-4/评审receipt]
+    F -->|是| FP[直接推荐+同一轮接受<br/>dsh-ssf workflow accept --verification tdd|new-test|bounded<br/>跳过规划工件/契约/DP-4/评审receipt]
     F -->|否| G[⑥ DP-0 确认门<br/>1. 工件语言解析<br/>2. workflow show 收集缺失事实<br/>3. workflow recommend 展示<br/>Observed/Recommended/Why<br/>4. 用户显式选择并确认<br/>5. state set dp_0_confirmed true]
     G --> H[⑦ 按状态路由 + 过期检测<br/>见第 2 步流程图]
 ```
@@ -82,7 +82,7 @@ flowchart LR
     F1 & F2 & F3 --> G[每个 wave 后<br/>加载 task-reviewer-prompt.md<br/>code-reviewer 双裁决]
     G -->|verdict pass| H[spec-merger 合并 delta specs]
     H --> I[release-archivist<br/>验证→审计→DP-7]
-    I --> J[执行 ssf state transition closing<br/>持久化终态]
+    I --> J[执行 dsh-ssf state transition closing<br/>持久化终态]
 ```
 
 ## 第 4 步:子代理(prompt 文件)的加载时机
@@ -119,7 +119,7 @@ flowchart TD
     SM --> RA[release-archivist]
     RA --> D6[D6 验证失败→debugging<br/>bug-investigator 4阶段]
     RA --> D7[DP-7 收尾确认]
-    D7 --> CL[ssf state transition closing<br/>持久化终态]
+    D7 --> CL[dsh-ssf state transition closing<br/>持久化终态]
     CL --> STOP[停止: next skill = none<br/>后续请求被终态短路拦截]
     BE -.遇bug.-> BI[bug-investigator<br/>3+失败→DP-5升级]
     BI --> BE

@@ -1,6 +1,6 @@
 # Artifact Contract
 
-`spec-superflow` uses five primary artifacts in each change:
+`dsh-ssf` uses five primary artifacts in each change:
 
 1. `proposal.md`
 2. `specs/`
@@ -29,13 +29,13 @@ Defines:
 - scenarios and acceptance conditions
 - behavioral edges the implementation must respect
 
-In a project using this plugin, `specs/` within an active `changes/<change>/` directory is the change's delta-spec source and the only spec input to that change's workflow state. The project-root `specs/` directory is a separately published baseline: `ssf sync` applies delta operations to it and records a publication receipt on the active change. Root baseline files never determine active transitions; closing verifies the receipt against both sides. The plugin repository itself ships only curated examples, not live change directories or generated baselines.
+In a project using this plugin, `specs/` within an active `changes/<change>/` directory is the change's delta-spec source and the only spec input to that change's workflow state. The project-root `specs/` directory is a separately published baseline: `dsh-ssf sync` applies delta operations to it and records a publication receipt on the active change. Root baseline files never determine active transitions; closing verifies the receipt against both sides. The plugin repository itself ships only curated examples, not live change directories or generated baselines.
 
 #### Delta publication compatibility
 
 `## Purpose` is an optional top-level extension in a delta spec, not a newly required field. It is used only to create a new published main spec; an absent or empty value receives a deterministic default Purpose, while an existing main spec Purpose is preserved. Consequently, older templates and historical deltas without this section remain publishable.
 
-A no-op means an already synchronized, semantically equivalent delta operation: it produces a successful receipt but no baseline write. A missing operation target with a case- or whitespace-only near-match must fail rather than being treated as a no-op. `ssf sync` constructs and validates every candidate before it writes any baseline file, so an invalid candidate prevents partial publication.
+A no-op means an already synchronized, semantically equivalent delta operation: it produces a successful receipt but no baseline write. A missing operation target with a case- or whitespace-only near-match must fail rather than being treated as a no-op. `dsh-ssf sync` constructs and validates every candidate before it writes any baseline file, so an invalid candidate prevents partial publication.
 
 ### `design.md`
 
@@ -65,17 +65,17 @@ Defines:
 - review gates and their review receipts
 - escalation rules
 
-For Full/legacy Hotfix, `ssf execution recommend` lists applicable execution modes and
+For Full/legacy Hotfix, `dsh-ssf execution recommend` lists applicable execution modes and
 recommends one from task count and wave strategy, and persists a recommendation
 receipt at `<change>/.superpowers/sdd/execution-recommendation.json`. `plan`
 and `revise` require the receipt to match the current artifacts, contract, and
 waves. The user confirms the selected mode with `--confirm`; a non-recommended mode additionally requires
 `--acknowledge-recommendation`. Batch Inline remains serial. After approval,
-`ssf execution plan` writes
+`dsh-ssf execution plan` writes
 the persisted execution plan to `<change>/.superpowers/sdd/execution-plan.json`.
 That JSON records each wave's dependencies and parallel/serial strategy; it is
 not stored in `execution-contract.md`. A current `pass` review receipt is
-required for every wave before dependent work or closing proceeds. Quick, direct Hotfix, and Tweak are exempt from execution-plan and review-receipt gates and persist `test_result: pass` after bounded verification. `ssf execution revise`
+required for every wave before dependent work or closing proceeds. Quick, direct Hotfix, and Tweak are exempt from execution-plan and review-receipt gates and persist `test_result: pass` after bounded verification. `dsh-ssf execution revise`
 retains or upgrades an existing plan as `sdd`, requires fresh confirmation,
 creates a new revision, and
 clears prior review receipts; it never permits a downgrade.
@@ -83,18 +83,18 @@ clears prior review receipts; it never permits a downgrade.
 ### Recovery control-plane overlay
 
 Recovery commands operate beside the eight-state workflow, without creating a
-ninth state or a new transition. `ssf resume [change-dir]` and `ssf switch
+ninth state or a new transition. `dsh-ssf resume [change-dir]` and `dsh-ssf switch
 <change-dir>` are read-only: resume returns a recovery summary and chooses a
 target automatically only when there is one active change; switch returns the
 explicit target's recovery context and never changes cwd, a TUI session, or a
-hidden pointer. 其 DSH/agent 通用适配器（历史曾为 CodeBuddy/WorkBuddy 提供，历史平台，已剥离）可利用该上下文聚焦会话。`ssf save <change-dir> --task <id> --next <text>` manually writes a
+hidden pointer. 其 DSH/agent 通用适配器（历史曾为 CodeBuddy/WorkBuddy 提供，历史平台，已剥离）可利用该上下文聚焦会话。`dsh-ssf save <change-dir> --task <id> --next <text>` manually writes a
 compatible checkpoint through the existing checkpoint save protocol. It never
-commits, pushes, or syncs automatically. `/ssf:resume`, `/ssf:switch`, and
-`/ssf:save` 是 DSH/agent 通用的 Markdown 命令适配器（历史平台，已剥离），分发至相同的 CLI guards；在不同载体上不承诺相同斜杠名称。
+commits, pushes, or syncs automatically. `/dsh-ssf:resume`, `/dsh-ssf:switch`, and
+`/dsh-ssf:save` 是 DSH/agent 通用的 Markdown 命令适配器（历史平台，已剥离），分发至相同的 CLI guards；在不同载体上不承诺相同斜杠名称。
 
 ## Mapping
 
-`spec-superflow` converts planning artifacts into execution inputs:
+`dsh-ssf` converts planning artifacts into execution inputs:
 
 - `proposal.md` -> intent lock and scope fence
 - `specs/` -> test obligations and acceptance checks
@@ -108,6 +108,6 @@ For Full/legacy Hotfix, implementation starts only after:
 - planning artifacts exist
 - `execution-contract.md` exists
 - the user approves the execution contract
-- Full/legacy Hotfix have a current `ssf execution plan` with a user-confirmed mode and
+- Full/legacy Hotfix have a current `dsh-ssf execution plan` with a user-confirmed mode and
   persisted recommendation evidence
 - every completed wave records a current `pass` review receipt before closing

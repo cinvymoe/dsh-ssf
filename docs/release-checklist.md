@@ -1,6 +1,6 @@
 # Release Checklist
 
-Use this checklist before publishing a new version of `spec-superflow`.
+Use this checklist before publishing a new version of `dsh-ssf`.
 
 ## Repository Shape
 
@@ -9,7 +9,7 @@ Use this checklist before publishing a new version of `spec-superflow`.
 - `INSTALL.md` matches the supported installation story
 - `CHANGELOG.md` contains the new release entry
 - `LICENSE` is present
-- `ssf version <semver>` covers all manifests (JSON) + documentation (Markdown/shell)
+- `dsh-ssf version <semver>` covers all manifests (JSON) + documentation (Markdown/shell)
 - `node scripts/check-version-consistency.mjs` passes (also runs in CI)
 - Verify all nine runtime-dependent canonical skills use the exact release version, and local installer output rewrites them to its bundled `scripts/spec-superflow.mjs`.
 - Verify `.github/plugin/marketplace.json` and `.claude-plugin/marketplace.json` versions match
@@ -110,7 +110,7 @@ For each example in `docs/examples/`:
   test ! -d "$SSF_CODEBUDDY_SMOKE_HOME/spec-superflow"
   node --test tests/lib/cmd-install-codebuddy.test.mjs # （历史平台，已剥离）
   ```
-- `npm run test:raw-mode` — packs the current source and runs a canonical runtime in an empty directory with no plugin-root variables or global `ssf`.
+- `npm run test:raw-mode` — packs the current source and runs a canonical runtime in an empty directory with no plugin-root variables or global `dsh-ssf`.
 - Run a representative local-installer smoke test.
 - `spec-superflow.config.json` absence still works (backward compatible defaults)
 - `package.json` `bin` field points to correct entry script
@@ -142,8 +142,8 @@ For each example in `docs/examples/`:
   CODEX_HOME="$(mktemp -d)"
   export CODEX_HOME
   codex plugin marketplace add hashgraph-online/awesome-codex-plugins
-  codex plugin add spec-superflow@awesome-codex-plugins
-  codex plugin list | rg spec-superflow
+  codex plugin add dsh-ssf@awesome-codex-plugins
+  codex plugin list | rg dsh-ssf
   ```
 
 - If the remote marketplace version lags, submit and track the 同步 PR; wait for maintainers to merge and the generator to finish, then rerun the delivery verification and clean-Codex installation check.

@@ -2,7 +2,7 @@
 
 > dsh-ssf — DSH 专用发行版
 
-本发行版仅支持 **DeepSeek Harness（dsh-ssf）**，通过 `packages/dsh-ssf` 接入 DSH web profile（host 半 `ssf_*` 原生工具 + 快照服务，client 半 Spec 工作流 tab）。原项目曾支持 19 个平台（Claude Code、Cursor、Codex、Copilot、Gemini、OpenCode、WorkBuddy、Trae 等），现已剥离，相关适配代码与安装器不再提供；如需查看历史实现，请回溯 git 历史 **v1.2.0 之前**的 `docs/platform-matrix.md` 与安装脚本。
+本发行版仅支持 **DeepSeek Harness（dsh-ssf）**，通过 `packages/dsh-ssf` 接入 DSH web profile（host 半 `dsh-ssf_*` 原生工具 + 快照服务，client 半 Spec 工作流 tab）。原项目曾支持 19 个平台（Claude Code、Cursor、Codex、Copilot、Gemini、OpenCode、WorkBuddy、Trae 等），现已剥离，相关适配代码与安装器不再提供；如需查看历史实现，请回溯 git 历史 **v1.2.0 之前**的 `docs/platform-matrix.md` 与安装脚本。
 
 核心工作流与原项目完全一致（9 skills、8 状态机、解析/验证引擎、模板、CLI 核心及守卫体系），差异仅在执行载体由多平台适配收敛为 DSH 原生插件。
 
@@ -10,11 +10,11 @@
 
 | 平台 | Skills | Rules | Hooks | 安装命令 |
 |------|--------|-------|-------|----------|
-| DeepSeek Harness | Skills (9) ✅ | Rules（phase-guard via DSH） | Hooks（— via `ssf_*` native tools） | `dsh plugin --profile web add <path>/packages/dsh-ssf` |
+| DeepSeek Harness | Skills (9) ✅ | Rules（phase-guard via DSH） | Hooks（— via `dsh-ssf_*` native tools） | `dsh plugin --profile web add <path>/packages/dsh-ssf` |
 
 - **Skills**：9 个 skill 通过 DSH 插件以结构化工具形式提供，无需平台技能目录拷贝。
-- **Rules**：phase-guard 守卫由 DSH 侧规则与 `ssf_guard` / `ssf_validate` 工具保证，不依赖平台自动加载的规则目录。
-- **Hooks**：无 SessionStart 钩子注入，上下文与快照通过 `ssf_*` 原生工具与 `GET /dsh-ssf/snapshot` 提供。
+- **Rules**：phase-guard 守卫由 DSH 侧规则与 `dsh-ssf_guard` / `dsh-ssf_validate` 工具保证，不依赖平台自动加载的规则目录。
+- **Hooks**：无 SessionStart 钩子注入，上下文与快照通过 `dsh-ssf_*` 原生工具与 `GET /dsh-ssf/snapshot` 提供。
 
 > 上述三层均由 DSH 插件在 Cordis 侧统一实现，不再依赖各平台的规则目录或 marketplace 分发。
 
@@ -22,11 +22,13 @@
 
 | 操作 | 命令 / 步骤 |
 |------|-------------|
-| 安装 | `dsh plugin --profile web add <path>/packages/dsh-ssf`，并在 `$DSH_HOME/profiles/web/cordis.patch.yml` 追加 `- insert: [{ id: ssf, name: dsh-ssf }]` 后重启 `dsh --profile web` |
+| 安装 | `dsh plugin --profile web add <path>/packages/dsh-ssf`，并在 `$DSH_HOME/profiles/web/cordis.patch.yml` 追加 `- insert: [{ id: dsh-ssf, name: dsh-ssf }]` 后重启 `dsh --profile web` |
 | 升级 | `git pull` 更新仓库后重启 profile（symlink 安装自动生效，无需重装） |
 | 卸载 | 移除补丁行 + `dsh plugin --profile web remove dsh-ssf` |
 
-> 旧的 `npx spec-superflow install-*` / marketplace 安装方式已移除，统一走 DSH 插件安装。
+> 旧的 `npx dsh-ssf install-*` / marketplace 安装方式已移除，统一走 DSH 插件安装。
+>
+> 注：代码层 bin/工具名/快照文件名仍保留 ssf 兼容别名，本系列文档统一以 dsh-ssf 表述。
 
 ## 归档说明
 

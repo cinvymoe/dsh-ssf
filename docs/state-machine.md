@@ -1,6 +1,6 @@
 # State Machine
 
-`spec-superflow` treats workflow progression as explicit state transitions.
+`dsh-ssf` treats workflow progression as explicit state transitions.
 
 ## States
 
@@ -18,21 +18,21 @@ DP-1 gates `exploring → specifying` on the Full path: the transition requires 
 At entry, `workflow-start` reads the persisted `workflow` selection first. An
 an explicit `full` selection wins. A selected `hotfix`, `tweak`, or `quick` stays
 active only while it remains within its boundary; a scope or risk increase refreshes
-the recommendation before escalating to Full. Otherwise it runs `ssf
-workflow show`, asks only for `missing_facts`, runs `ssf workflow recommend`,
+the recommendation before escalating to Full. Otherwise it runs `dsh-ssf
+workflow show`, asks only for `missing_facts`, runs `dsh-ssf workflow recommend`,
 and presents Observed, Available, Recommended, and Why. Recommendation does
 not change state. Full, legacy Hotfix, and Tweak are selected explicitly with
-`ssf workflow select --confirm`; a non-recommended selection requires
+`dsh-ssf workflow select --confirm`; a non-recommended selection requires
 `--acknowledge-recommendation`. A recommended Quick or incident Hotfix may be
-accepted with `ssf workflow accept --source direct-request --verification <tdd|new-test|bounded>`, which records the
+accepted with `dsh-ssf workflow accept --source direct-request --verification <tdd|new-test|bounded>`, which records the
 valid direct receipt needed by its short path. The legacy `runtime infer`
 compatibility API may return `full` for an empty directory, but it never
 replaces the user's intake selection.
 
 Low-risk Quick uses direct acceptance. A risk-signalled Quick is selectable only
 with an acknowledgement and an explicit verification strategy. To change a
-Quick, direct Hotfix, or Tweak choice, run `ssf workflow recommend` with the updated
-facts, then confirm `ssf workflow select --mode full`; that replaces the short
+Quick, direct Hotfix, or Tweak choice, run `dsh-ssf workflow recommend` with the updated
+facts, then confirm `dsh-ssf workflow select --mode full`; that replaces the short
 selection with an auditable Full intake receipt.
 
 Full and legacy Hotfix intake completes before DP-0 is marked confirmed.
@@ -82,10 +82,10 @@ phase transition; the direct receipt then permits the short transition from
 
 ## Execution Plan Control Plane
 
-For Full/legacy Hotfix, DP-4 is the persisted execution plan created by `ssf execution
+For Full/legacy Hotfix, DP-4 is the persisted execution plan created by `dsh-ssf execution
 plan` at `<change>/.superpowers/sdd/execution-plan.json`, not an arbitrary
 state value or content stored in `execution-contract.md`. Before planning, run
-`ssf execution recommend`; it lists applicable `inline`, `batch-inline`, and
+`dsh-ssf execution recommend`; it lists applicable `inline`, `batch-inline`, and
 `sdd` modes with evidence and one recommendation, and persists a receipt at
 `<change>/.superpowers/sdd/execution-recommendation.json`. `plan` and `revise`
 accept only a receipt whose artifacts, contract, and waves still match. The user must record the
@@ -95,10 +95,10 @@ substitute for parallel execution.
 Quick, direct Hotfix, and Tweak are exempt from execution-plan and review-receipt requirements on their normal bounded path; each closes with `test_result: pass`. If any enters DP-5 debugging escalation, it must first establish a current execution plan before recording an attempt or persisting DP-5.
 
 For Full/legacy Hotfix, the plan names ordered execution waves, dependencies,
-and parallel/serial strategy. `ssf execution show <change-dir> --json` reports
+and parallel/serial strategy. `dsh-ssf execution show <change-dir> --json` reports
 which current waves are eligible. Each completed Full/legacy wave must have a current
-`pass` review receipt, recorded with `ssf execution review`, before a dependent
-wave or `closing` can proceed. `ssf execution revise` retains or upgrades an
+`pass` review receipt, recorded with `dsh-ssf execution review`, before a dependent
+wave or `closing` can proceed. `dsh-ssf execution revise` retains or upgrades an
 existing plan as `sdd`; that new revision requires a fresh confirmation (and
 acknowledgement when it differs from the new recommendation), invalidates old
 review receipts, and does not permit a downgrade. Recovery, switching, and
@@ -137,22 +137,22 @@ Checkpoints, handoffs, and prototypes are durable overlays, not workflow states.
 They do not add transitions to the state machine or change the meaning of the
 eight core states.
 
-- `ssf resume [change-dir]` is read-only and returns a recovery summary. With no
+- `dsh-ssf resume [change-dir]` is read-only and returns a recovery summary. With no
   target, it auto-selects only the unique active change.
-- `ssf switch <change-dir>` is read-only and returns the explicit target's
+- `dsh-ssf switch <change-dir>` is read-only and returns the explicit target's
   recovery context; it never changes cwd, a TUI session, or a hidden pointer.
-- `ssf save <change-dir> --task <id> --next <text>` manually writes a compatible
+- `dsh-ssf save <change-dir> --task <id> --next <text>` manually writes a compatible
   checkpoint. It never commits, pushes, or syncs automatically.
-- `ssf checkpoint save <change-dir> --task <id> --next <text>` records task-level
+- `dsh-ssf checkpoint save <change-dir> --task <id> --next <text>` records task-level
   recovery context under `.superpowers/sdd/checkpoints/`.
-- `ssf handoff create <change-dir> --type <type> ...` creates explicit side-work
+- `dsh-ssf handoff create <change-dir> --type <type> ...` creates explicit side-work
   contracts under `.superpowers/sdd/handoffs/`.
 - `workflow-start` 仅对非终态在正常路由前列出 overlays；`closing` 会在
   overlay recovery 前短路。`result-ready` handoff 在受影响工作恢复前仍需显式
   审查和 resolve；stale checkpoint 仅保留为历史证据。
 - Prototype work is optional and requires explicit user confirmation. Results
   are reviewed manually and never mutate `design.md` or `tasks.md`.
-- `/ssf:resume`, `/ssf:switch`, and `/ssf:save` 是 DSH/agent 通用的 Markdown 命令适配器（历史曾为 CodeBuddy/WorkBuddy 提供，历史平台，已剥离），用于上述 CLI guards。switch 适配器可利用返回的上下文聚焦会话；在不同载体上不承诺相同斜杠名称。
+- `/dsh-ssf:resume`, `/dsh-ssf:switch`, and `/dsh-ssf:save` 是 DSH/agent 通用的 Markdown 命令适配器（历史曾为 CodeBuddy/WorkBuddy 提供，历史平台，已剥离），用于上述 CLI guards。switch 适配器可利用返回的上下文聚焦会话；在不同载体上不承诺相同斜杠名称。
 
 ## Transitions
 
@@ -195,9 +195,9 @@ During `executing`, if a bug, test failure, or unexpected behavior blocks progre
 1. Pause `executing` and enter `debugging`
 2. `bug-investigator` performs 4-phase root cause analysis
 3. If root cause found → fix (with TDD) → return to `executing`
-4. Before recording any attempt, require a current valid execution plan, including for Quick/direct Hotfix/Tweak; then record one distinct evidence-backed attempt with `ssf debug attempt record`; Wave Review repair failures remain separate
+4. Before recording any attempt, require a current valid execution plan, including for Quick/direct Hotfix/Tweak; then record one distinct evidence-backed attempt with `dsh-ssf debug attempt record`; Wave Review repair failures remain separate
 5. If 3+ recorded fix attempts fail → question architecture → present the ledger to the user
-6. Persist DP-5 only through `ssf debug escalate ... --confirm`; raw `state set dp_5_*` is blocked
+6. Persist DP-5 only through `dsh-ssf debug escalate ... --confirm`; raw `state set dp_5_*` is blocked
 
 ## Anti-Pattern
 
